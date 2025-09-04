@@ -1,0 +1,223 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/* ===== Enums ===== */
+
+enum Role {
+  ADMIN
+  USER
+}
+
+enum QRType {
+  IDENTITY   // belongs to a Donor (student)
+  PRESET     // a "fund + amount" preset barcode
+}
+
+enum GroupType {
+  FUND
+  VOLUNTEER // exactly one of the 5 is this type
+}
+
+enum DonationSource {
+  SCAN
+  MANUAL
+}
+
+enum FundingSource {
+  RAISED
+  SPONSORED
+  BUDGET
+  COLLECTED
+}
+
+enum BudgetCategory {
+  GENERAL   // "Chessed General"
+  GROUP     // a specific group
+}
+
+/* ===== Users (admin) ===== */
+
+model User {
+  id        String   @id @default(cuid())
+  name      String?
+  email     String?  @unique
+  password  String?
+  role      Role     @default(ADMIN)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+/* ===== Groups (5 seeded rows) =====
+   Seed examples:
+   - CHESSED GENERAL -> represented by Budget.category = GENERAL (not a row)
+   - SHIRAS SARA
+   - TIFERES ROCHEL
+   - LEV SHULAMIS
+   - SHIRAS SARA SUPPORTER
+   Mark one group as VOLUNTEER (the “help at homes” group).
+*/
+model Group {
+  id        String    @id @default(cuid())
+  name      String    @unique
+  type      GroupType @default(FUND)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  donations       Donation[]
+  expenses        Expense[]
+  sales           Sale[]
+  budgets         Budget[] // when Budget.category = GROUP
+  presetQRCodes   QRCode[] @relation("PresetGroupQRCodes")
+  participations  Participation[]
+}
+
+/* ===== Donors (students) ===== */
+
+model Donor {
+  id         String   @id @default(cuid())
+  name       String
+  className  String    // classroom label (e.g., "2A")
+  gradeName  String    // e.g., "Grade 2"
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  // 1:1 identity QR (back relation)
+  qrCode     QRCode?  @relation("DonorIdentityQR")
+
+  donations      Donation[]
+  participations Participation[]
+
+  @@index([className])
+  @@index([gradeName])
+}
+
+/* ===== QR Codes =====
+   - IDENTITY: linked to a Donor
+   - PRESET:   linked to (group + amount) so scanning applies that preset
+*/
+model QRCode {
+  id         String   @id @default(cuid())
+  value      String   @unique // printable/encoded string
+  type       QRType
+
+  // For IDENTITY codes
+  donorId    String?  @unique
+  donor      Donor?   @relation("DonorIdentityQR", fields: [donorId], references: [id])
+
+  // For PRESET codes (fund + amount)
+  presetGroupId String?
+  presetGroup   Group?   @relation("PresetGroupQRCodes", fields: [presetGroupId], references: [id])
+  presetAmount  Decimal? @db.Decimal(10,2)
+  label         String?  // e.g., "Shiras Sara - $1"
+
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  storagePath String
+  qrCodeUrl   String
+}
+
+/* ===== Donations (money) ===== */
+
+model Donation {
+  id         String         @id @default(cuid())
+  donorId    String
+  donor      Donor          @relation(fields: [donorId], references: [id])
+
+  groupId    String
+  group      Group          @relation(fields: [groupId], references: [id])
+
+  amount     Decimal        @db.Decimal(10,2)
+  source     DonationSource @default(SCAN)
+  scannedAt  DateTime       @default(now())
+
+  @@index([donorId])
+  @@index([groupId])
+  @@index([scannedAt])
+}
+
+/* ===== Budgets =====
+   - GENERAL is for "Chessed General" bucket (no groupId).
+   - GROUP   ties to a specific Group.
+   - One budget per (year, category, groupId?) combo.
+*/
+model Budget {
+  id          String         @id @default(cuid())
+  fiscalYear  Int
+  category    BudgetCategory
+  amount      Decimal        @db.Decimal(12,2)
+
+  groupId     String?
+  group       Group?         @relation(fields: [groupId], references: [id])
+
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  @@unique([fiscalYear, category, groupId])
+}
+
+/* ===== Expenses ===== */
+
+model Expense {
+  id             String         @id @default(cuid())
+  date           DateTime       @default(now())
+  amount         Decimal        @db.Decimal(12,2)
+  description    String?
+  fundingSource  FundingSource
+
+  // When applied to a specific group (most cases)
+  groupId  String?
+  group    Group?          @relation(fields: [groupId], references: [id])
+
+  // If this is for "Chessed General", leave groupId null and treat it as general.
+  // (You can also show a UI toggle for "General vs Group".)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([groupId, date])
+}
+
+/* ===== Sales (per group) =====
+   Tracks fundraisers: cost vs revenue -> profit in queries.
+*/
+model Sale {
+  id            String         @id @default(cuid())
+  groupId       String
+  group         Group          @relation(fields: [groupId], references: [id])
+
+  item          String
+  qty           Int            @default(1)
+  unitCost      Decimal        @db.Decimal(10,2)
+  totalCost     Decimal        @db.Decimal(12,2)
+  revenue       Decimal        @db.Decimal(12,2)
+  fundingSource FundingSource
+  date          DateTime       @default(now())
+
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  @@index([groupId, date])
+}
+
+/* ===== Participation (for VOLUNTEER group) ===== */
+model Participation {
+  id        String   @id @default(cuid())
+  donorId   String
+  donor     Donor    @relation(fields: [donorId], references: [id])
+
+  groupId   String
+  group     Group    @relation(fields: [groupId], references: [id])
+
+  date      DateTime @default(now())
+
+  @@index([groupId, date])
+  @@index([donorId, date])
+}
