@@ -6,11 +6,6 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 const BUCKET = "qr-codes";
 
-// Define the context type for clarity
-type RouteContext = {
-  params: Promise<{ id: string }>;
-};
-
 // --- 1. Handler for Updating a QR Code ---
 export async function PATCH(
   req: NextRequest,

@@ -1,7 +1,7 @@
 import type { NextAuthOptions, User } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import { PrismaAdapter } from "@next-auth/prisma-adapter";
-import prisma from "@/lib/prisma";
+import prisma from "@/lib/prisma"; // Your Prisma client setup
 import bcrypt from "bcryptjs";
 
 export const authOptions: NextAuthOptions = {
@@ -23,52 +23,72 @@ export const authOptions: NextAuthOptions = {
         },
       },
       async authorize(
-        credentials: Record<"email" | "password", string> | undefined
+        credentials: Record<string, string> | undefined
       ): Promise<User | null> {
-        if (!credentials) return null;
+        try {
+          if (!credentials) return null;
 
-        const { email, password } = credentials;
+          const { email, password } = credentials;
+          // Find user in database
+          const user = await prisma.user.findUnique({
+            where: { email },
+          });
 
-        const userFromDb = await prisma.user.findUnique({
-          where: { email },
-        });
+          if (!user || !user.password) {
+            throw new Error("Invalid email or password");
+          }
 
-        if (!userFromDb || !userFromDb.password) return null;
+          // Verify password
+          const isPasswordCorrect = await bcrypt.compare(
+            password,
+            user.password
+          );
 
-        const isPasswordCorrect = await bcrypt.compare(
-          password,
-          userFromDb.password
-        );
-        if (!isPasswordCorrect) return null;
-
-        // Map Prisma user to NextAuth User type
-        const user: User = {
-          id: userFromDb.id?.toString() || "", // fallback to empty string if undefined
-          name: userFromDb.name || undefined,
-          email: userFromDb.email || undefined,
-        };
-
-        return user;
+          if (isPasswordCorrect) {
+            return {
+              id: user.id,
+              email: user.email || undefined,
+              name: user.name || undefined,
+              role: user.role,
+            } as User;
+          } else {
+            throw new Error("Invalid email or password");
+          }
+        } catch (err: unknown) {
+          const errorMessage =
+            err instanceof Error ? err.message : "An error occurred";
+          throw new Error(errorMessage);
+        }
       },
     }),
   ],
-  pages: { signIn: "/login", newUser: "/" },
-  session: { strategy: "jwt" },
+  pages: {
+    signIn: "/login", // Custom login page
+    // signUp: "/signup", // Optional, for signup page
+    newUser: "/",
+  },
+  session: {
+    strategy: "jwt",
+  },
   callbacks: {
     async jwt({ token, user }) {
       if (user) {
-        token.id = user.id;
+        // Add custom fields to the token
+        token.id = user.id?.toString();
+        token.role = user.role;
         token.email = user.email;
       }
       return token;
     },
     async session({ session, token }) {
+      // Add custom fields to the session
       if (token) {
         session.user.id = token.id;
+        session.user.role = token.role;
         session.user.email = token.email;
       }
       return session;
     },
   },
-  secret: process.env.NEXTAUTH_SECRET,
+  secret: process.env.NEXTAUTH_SECRET, // Use a secure secret
 };
