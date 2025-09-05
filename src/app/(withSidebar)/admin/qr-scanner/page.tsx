@@ -152,7 +152,7 @@ export default function ScannerPage() {
           <CardHeader>
             <CardTitle>Scan QR Code</CardTitle>
             <CardDescription>
-              Point your camera at a student's QR code.
+              Point your camera at a student&apos;s QR code.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -173,7 +173,7 @@ export default function ScannerPage() {
       ) : (
         <Tabs
           value={mode}
-          onValueChange={(v) => setMode(v as any)}
+          onValueChange={(v) => setMode(v as "NORMAL" | "PRESET")}
           className="w-full"
         >
           <TabsList className="grid w-full grid-cols-2">
@@ -185,8 +185,8 @@ export default function ScannerPage() {
               <CardHeader>
                 <CardTitle>Normal Scan</CardTitle>
                 <CardDescription>
-                  Scan a student's ID, then enter the donation amount and select
-                  a fund.
+                  Scan a student&apos;s ID, then enter the donation amount and
+                  select a fund.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
