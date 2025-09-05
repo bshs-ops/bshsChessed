@@ -17,8 +17,8 @@ export default function PublicHeader({
         <div className="h-15 flex items-center justify-between">
           <Link href="/" className="flex items-center gap-2">
             <Image
-              src="/sqratchLogo.png"
-              alt="SQRATCH Logo"
+              src="/assets/logos/ChessedLogo.jpg"
+              alt="Chessed Logo"
               className="h-10 w-auto"
               width={40}
               height={40}

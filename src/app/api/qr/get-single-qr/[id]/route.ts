@@ -6,10 +6,12 @@ export const dynamic = "force-dynamic";
 
 export async function GET(
   _req: Request,
-  { params }: { params: { id: string } }
+  ctx: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await ctx.params; // await the params
+
   const qr = await prisma.qRCode.findUnique({
-    where: { id: params.id },
+    where: { id },
     include: {
       donor: {
         select: { id: true, name: true, className: true, gradeName: true },
@@ -17,10 +19,10 @@ export async function GET(
       presetGroup: { select: { id: true, name: true } },
     },
   });
+
   if (!qr)
     return NextResponse.json({ error: "QR code not found" }, { status: 404 });
 
-  // normalize for UI
   const payload = {
     id: qr.id,
     type: qr.type,

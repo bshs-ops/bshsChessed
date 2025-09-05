@@ -2,6 +2,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
+interface ParamCtx {
+  params?: Record<string, string>;
+}
+
 const BUCKET = "qr-codes";
 
 type Ctx =
@@ -10,7 +14,7 @@ type Ctx =
 
 export async function GET(req: NextRequest, ctx: Ctx) {
   // 👇 Handle both async and sync params
-  const raw = "params" in ctx ? (await (ctx as any).params) ?? {} : {};
+  const raw = "params" in ctx ? (await (ctx as ParamCtx).params) ?? {} : {};
   let segments: string[] = [];
 
   if (Array.isArray(raw.path)) segments = raw.path;
@@ -48,7 +52,7 @@ export async function GET(req: NextRequest, ctx: Ctx) {
     ? "image/svg+xml"
     : "application/octet-stream";
 
-  return new NextResponse(data as any, {
+  return new NextResponse(data as string | ArrayBuffer | Blob, {
     headers: {
       "Content-Type": contentType,
       "Cache-Control": "public, max-age=31536000, immutable",

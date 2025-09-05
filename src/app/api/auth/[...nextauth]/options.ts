@@ -1,7 +1,7 @@
-import type { NextAuthOptions } from "next-auth";
+import type { NextAuthOptions, User } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import { PrismaAdapter } from "@next-auth/prisma-adapter";
-import prisma from "@/lib/prisma"; // Your Prisma client setup
+import prisma from "@/lib/prisma";
 import bcrypt from "bcryptjs";
 
 export const authOptions: NextAuthOptions = {
@@ -22,67 +22,53 @@ export const authOptions: NextAuthOptions = {
           placeholder: "your-awesome-password",
         },
       },
-      async authorize(credentials: any): Promise<any> {
-        try {
-          const { email, password } = credentials;
+      async authorize(
+        credentials: Record<"email" | "password", string> | undefined
+      ): Promise<User | null> {
+        if (!credentials) return null;
 
-          // Find user in database
-          const user = await prisma.user.findUnique({
-            where: { email },
-          });
+        const { email, password } = credentials;
 
-          if (!user || !user.password) {
-            throw new Error("Invalid email or password");
-          }
+        const userFromDb = await prisma.user.findUnique({
+          where: { email },
+        });
 
-          // Verify password
-          const isPasswordCorrect = await bcrypt.compare(
-            password,
-            user.password
-          );
+        if (!userFromDb || !userFromDb.password) return null;
 
-          if (isPasswordCorrect) {
-            return user;
-          } else {
-            throw new Error("Invalid email or password");
-          }
-        } catch (err: any) {
-          throw new Error(err.message);
-        }
+        const isPasswordCorrect = await bcrypt.compare(
+          password,
+          userFromDb.password
+        );
+        if (!isPasswordCorrect) return null;
+
+        // Map Prisma user to NextAuth User type
+        const user: User = {
+          id: userFromDb.id?.toString() || "", // fallback to empty string if undefined
+          name: userFromDb.name || undefined,
+          email: userFromDb.email || undefined,
+        };
+
+        return user;
       },
     }),
   ],
-  pages: {
-    signIn: "/login", // Custom login page
-    // signUp: "/signup", // Optional, for signup page
-    newUser: "/",
-  },
-  session: {
-    strategy: "jwt",
-  },
+  pages: { signIn: "/login", newUser: "/" },
+  session: { strategy: "jwt" },
   callbacks: {
     async jwt({ token, user }) {
       if (user) {
-        // Add custom fields to the token
-        token.id = user.id?.toString();
-        token.role = user.role;
-        token.isEmailVerified = user.isEmailVerified;
+        token.id = user.id;
         token.email = user.email;
-        token.isTemporary = user.isTemporary; // Add isTemporary field
       }
       return token;
     },
     async session({ session, token }) {
-      // Add custom fields to the session
       if (token) {
         session.user.id = token.id;
-        session.user.role = token.role;
-        session.user.isEmailVerified = token.isEmailVerified;
         session.user.email = token.email;
-        session.user.isTemporary = token.isTemporary; // Add isTemporary field
       }
       return session;
     },
   },
-  secret: process.env.NEXTAUTH_SECRET, // Use a secure secret
+  secret: process.env.NEXTAUTH_SECRET,
 };

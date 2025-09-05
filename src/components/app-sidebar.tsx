@@ -4,11 +4,9 @@ import {
   LogOut,
   LayoutDashboard,
   QrCode,
-  FlagIcon,
   ListTodo,
   Printer,
   UserPlus,
-  Users,
 } from "lucide-react";
 import { signOut } from "next-auth/react";
 import { useRouter } from "next/navigation";
@@ -68,9 +66,9 @@ export function AppSidebar() {
 
   const data = {
     user: {
-      name: session?.user?.name || "SQRATCH",
-      email: session?.user?.email || "dummyemail@gmail.com",
-      avatar: session?.user?.image || "../../P_logo.png",
+      name: session?.user?.name || "Chessed",
+      email: session?.user?.email || "admin@gmail.com",
+      avatar: session?.user?.image || "../../assets/logos/ChessedLogo.jpg",
     },
   };
 

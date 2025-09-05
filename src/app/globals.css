@@ -81,6 +81,7 @@
   --card-colour-4: oklch(59.058% 0.16589 32.373);
   --card-colour-5: oklch(16.903% 0.0314 222.684);
   --card-colour-6: #ffffff;
+  --card-colour-7: oklch(0.74 0.15 226.26);
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
 }

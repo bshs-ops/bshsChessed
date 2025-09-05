@@ -1,6 +1,4 @@
 import React, { Suspense } from "react";
-import Link from "next/link"; // Import Link for navigation.
-import Image from "next/image";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
 import // Breadcrumb,
@@ -39,33 +37,6 @@ export default function DashboardLayout({
                 orientation="vertical"
                 className="mr-2 h-4 hidden sm:block"
               />{" "}
-              {/* Hidden on mobile. */}
-              {/* Desktop/Tablet logo (left-aligned) */}
-              <Link
-                href="/dashboard"
-                className="hidden sm:flex items-center" // Hidden on mobile, flex on small and larger screens.
-              >
-                <Image
-                  src="/sqratchLogo.png"
-                  alt="SQRATCH Logo"
-                  className="h-10 w-auto"
-                  width={40}
-                  height={40}
-                />
-              </Link>
-              {/* Mobile-only centered logo */}
-              <Link
-                href="/dashboard"
-                className="sm:hidden justify-self-center flex items-center ml-12" // Flex on mobile, hidden on small and larger screens.
-              >
-                <Image
-                  src="/sqratchLogo.png"
-                  alt="SQRATCH Logo"
-                  className="h-10 w-auto"
-                  width={40}
-                  height={40}
-                />
-              </Link>
             </div>
             <div className="pr-4 text-white"></div>
           </header>

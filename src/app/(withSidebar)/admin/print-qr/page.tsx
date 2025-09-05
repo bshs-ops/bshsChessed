@@ -169,7 +169,7 @@ export default function PrintQRPage() {
               .map(
                 (qr) => `
               <div class="card">
-                <img src="/sqratchLogo.png" alt="Logo" />
+                <img src="/assets/logos/ChessedLogo.jpg" alt="Logo" />
                 <img src="${qr.imageUrl}" alt="QR Code" />
                 <div>${qr.campaignName}</div>
                 <div>${format(new Date(qr.createdAt), "PPP")}</div>
@@ -292,12 +292,19 @@ export default function PrintQRPage() {
                 checked={selectedQRIds.has(qr.id)}
                 onCheckedChange={(checked) => {
                   const newSet = new Set(selectedQRIds);
-                  checked ? newSet.add(qr.id) : newSet.delete(qr.id);
+                  if (checked) {
+                    newSet.add(qr.id);
+                  } else {
+                    newSet.delete(qr.id);
+                  }
                   setSelectedQRIds(newSet);
                 }}
               />
-              <Image src="/sqratchLogo.png" alt="Logo" className="w-20" />
-              {/* <Image src="/sqratchLogo.png" alt="Logo" width={80} height={80} className="w-20" /> */}
+              <Image
+                src="/assets/logos/ChessedLogo.jpg"
+                alt="Logo"
+                className="w-20"
+              />
               <Image
                 src={qr.imageUrl}
                 alt="QR Code"

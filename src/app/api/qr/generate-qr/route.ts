@@ -9,6 +9,12 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const dynamic = "force-dynamic";
 
+interface UserSession {
+  id: string;
+  email: string;
+  role: "ADMIN" | "USER" | string;
+}
+
 const BUCKET = "qr-codes"; // Supabase Storage bucket (private)
 const FOLDER = "qrCodes"; // base folder inside bucket
 
@@ -49,7 +55,13 @@ type Body =
 
 export async function POST(request: NextRequest) {
   const session = await getServerSession(authOptions);
-  if (!session || (session.user as any)?.role !== "ADMIN") {
+  if (!session) {
+    return NextResponse.json({ error: "Admins only" }, { status: 403 });
+  }
+
+  const user = session.user as UserSession;
+
+  if (user.role !== "ADMIN") {
     return NextResponse.json({ error: "Admins only" }, { status: 403 });
   }
 

@@ -2,10 +2,17 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
+import Image from "next/image";
 import axios from "axios";
 import ExcelJS from "exceljs";
 import jsPDF from "jspdf";
 import { toast } from "sonner";
+import { SquarePen, Trash, Printer, Sheet } from "lucide-react";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import {
   Table,
   TableBody,
@@ -22,6 +29,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+  DialogClose,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 
@@ -42,9 +59,26 @@ type QRCode = {
   preset: {
     groupId: string | null;
     groupName: string | null;
-    amount: string | null; // string coming from API
+    amount: string | null;
     label: string | null;
   } | null;
+};
+
+// Type for Groups (for the edit dropdown)
+type Group = { id: string; name: string };
+
+// Type for the edit form state
+type EditFormState = {
+  // IDENTITY fields
+  studentName: string;
+  studentClass: string;
+  studentGrade: string;
+  // PRESET fields
+  groupId: string;
+  amount: string;
+  label: string;
+  // Common field
+  isActive: boolean;
 };
 
 export default function QRManagementPage() {
@@ -60,19 +94,37 @@ export default function QRManagementPage() {
   // selection
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
+  // State for Edit Dialog
+  const [editOpen, setEditOpen] = useState(false);
+  const [editingQr, setEditingQr] = useState<QRCode | null>(null);
+  const [groups, setGroups] = useState<Group[]>([]);
+  const [editForm, setEditForm] = useState<EditFormState>({
+    studentName: "",
+    studentClass: "",
+    studentGrade: "",
+    groupId: "",
+    amount: "",
+    label: "",
+    isActive: true,
+  });
+
+  const fetchData = async () => {
+    try {
+      // Fetch both QR Codes and Groups
+      const [qrRes, groupsRes] = await Promise.all([
+        axios.get<{ data: QRCode[] }>("/api/qr/get-all-qrcodes"),
+        axios.get<{ data: Group[] }>("/api/admin/groups/get-all-groups"),
+      ]);
+      setQrCodes(qrRes.data.data);
+      setGroups(groupsRes.data.data);
+    } catch {
+      toast.error("Failed to fetch page data");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const qrRes = await axios.get<{ data: QRCode[] }>(
-          "/api/qr/get-all-qrcodes"
-        );
-        setQrCodes(qrRes.data.data);
-      } catch {
-        toast.error("Failed to fetch QR codes");
-      } finally {
-        setLoading(false);
-      }
-    };
     fetchData();
   }, []);
 
@@ -107,8 +159,134 @@ export default function QRManagementPage() {
 
   const toggleRow = (id: string, checked: boolean | "indeterminate") => {
     const next = new Set(selectedIds);
-    checked ? next.add(id) : next.delete(id);
+    if (checked) {
+      next.add(id);
+    } else {
+      next.delete(id);
+    }
     setSelectedIds(next);
+  };
+
+  // ✨ Handle Bulk Delete
+  const handleBulkDelete = async () => {
+    if (selectedIds.size === 0) {
+      window.alert("No QR codes selected");
+      return;
+    }
+
+    if (
+      !window.confirm(
+        "Are you sure you want to delete the selected QR codes permanently?"
+      )
+    ) {
+      return;
+    }
+
+    try {
+      await Promise.all(
+        Array.from(selectedIds).map((id) =>
+          axios.delete(`/api/qr/update-or-delete-qr/${id}`)
+        )
+      );
+      toast.success("Selected QR codes deleted.");
+      setQrCodes((prev) => prev.filter((q) => !selectedIds.has(q.id)));
+      setSelectedIds(new Set());
+    } catch {
+      toast.error("Failed to delete selected QR codes.");
+    }
+  };
+
+  const openEditDialog = (qr: QRCode) => {
+    setEditingQr(qr);
+    if (qr.type === "IDENTITY" && qr.identity) {
+      setEditForm({
+        studentName: qr.identity.name,
+        studentClass: qr.identity.className ?? "",
+        studentGrade: qr.identity.gradeName ?? "",
+        groupId: "",
+        amount: "",
+        label: "",
+        isActive: qr.isActive,
+      });
+    } else if (qr.type === "PRESET" && qr.preset) {
+      setEditForm({
+        studentName: "",
+        studentClass: "",
+        studentGrade: "",
+        groupId: qr.preset.groupId ?? "",
+        amount: qr.preset.amount ?? "",
+        label: qr.preset.label ?? "",
+        isActive: qr.isActive,
+      });
+    }
+    setEditOpen(true);
+  };
+
+  // ✨ Handle Update submission
+  const handleUpdate = async () => {
+    if (!editingQr) return;
+
+    let payload;
+    if (editingQr.type === "IDENTITY") {
+      if (
+        !editForm.studentName ||
+        !editForm.studentClass ||
+        !editForm.studentGrade
+      ) {
+        toast.error("Name, Class, and Grade are required.");
+        return;
+      }
+      payload = {
+        type: "IDENTITY",
+        studentName: editForm.studentName,
+        studentClass: editForm.studentClass,
+        studentGrade: editForm.studentGrade,
+        isActive: editForm.isActive,
+      };
+    } else {
+      // PRESET
+      if (!editForm.groupId || !editForm.amount) {
+        toast.error("Group and Amount are required.");
+        return;
+      }
+      payload = {
+        type: "PRESET",
+        groupId: editForm.groupId,
+        amount: parseFloat(editForm.amount),
+        label: editForm.label,
+        isActive: editForm.isActive,
+      };
+    }
+
+    try {
+      await axios.patch(`/api/qr/update-or-delete-qr/${editingQr.id}`, payload);
+      toast.success("QR Code updated successfully.");
+      setEditOpen(false);
+      setEditingQr(null);
+      fetchData(); // Refresh data from server
+    } catch (err) {
+      toast.error("Failed to update QR Code.");
+      console.error(err);
+    }
+  };
+
+  // ✨ Handle Delete
+  const handleDelete = async (id: string) => {
+    if (
+      !window.confirm(
+        "Are you sure you want to delete this QR code permanently?"
+      )
+    ) {
+      return;
+    }
+    try {
+      await axios.delete(`/api/qr/update-or-delete-qr/${id}`);
+      toast.success("QR Code deleted.");
+      // Optimistic UI update
+      setQrCodes((prev) => prev.filter((q) => q.id !== id));
+    } catch {
+      toast.error("Failed to delete QR Code.");
+    }
   };
 
   const rowsForExportOrPrint = selectedIds.size
@@ -226,7 +404,6 @@ export default function QRManagementPage() {
         doc.addPage();
       }
 
-      const pageIndex = Math.floor(index / (cols * rowsPerPage));
       const startX = margin + col * (cardW + gutter);
       const startY = margin + row * (cardH + gutter);
 
@@ -328,15 +505,54 @@ export default function QRManagementPage() {
               </SelectContent>
             </Select>
 
-            <Button
-              onClick={handleExportExcel}
-              className="bg-[#3b639a] text-white"
-            >
-              Export Excel
-            </Button>
-            <Button onClick={handlePrintSelected} variant="outline">
-              Print (PDF)
-            </Button>
+            {/* Export Excel */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  onClick={handleExportExcel}
+                  style={{ backgroundColor: "var(--card-colour-1)" }}
+                  className="text-white"
+                >
+                  <Sheet size={16} /> Excel
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Export the selected QR codes to Excel</p>
+              </TooltipContent>
+            </Tooltip>
+            {/* Print Bulk */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  onClick={handlePrintSelected}
+                  style={{ backgroundColor: "var(--card-colour-3)" }}
+                  className="text-white hover:text-white"
+                  variant="outline"
+                >
+                  <Printer size={16} /> Bulk
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Print the selected QR codes as PDF</p>
+              </TooltipContent>
+            </Tooltip>
+
+            {/* Delete Selected */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  onClick={handleBulkDelete}
+                  style={{ backgroundColor: "var(--card-colour-4)" }}
+                  className="text-white"
+                  variant="destructive"
+                >
+                  <Trash size={16} /> Selected
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Delete the selected QR codes permanently</p>
+              </TooltipContent>
+            </Tooltip>
           </div>
         </CardHeader>
 
@@ -372,7 +588,7 @@ export default function QRManagementPage() {
                   <TableHead>Created At</TableHead>
                   <TableHead>Donor/Group</TableHead>
                   <TableHead>Amount/Label</TableHead>
-                  <TableHead>Actions</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
 
@@ -394,7 +610,7 @@ export default function QRManagementPage() {
                       <TableCell>{q.type}</TableCell>
 
                       <TableCell>
-                        <img
+                        <Image
                           src={toQrImgUrl(q.storagePath)}
                           alt="QR"
                           width={60}
@@ -403,10 +619,6 @@ export default function QRManagementPage() {
                             border: "1px solid #e5e7eb",
                             borderRadius: 4,
                           }}
-                          onError={(e) =>
-                            ((e.currentTarget as HTMLImageElement).src =
-                              "/placeholder-qr.png")
-                          }
                         />
                       </TableCell>
 
@@ -438,14 +650,65 @@ export default function QRManagementPage() {
                           : "-"}
                       </TableCell>
 
-                      <TableCell>
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          onClick={() => handlePrintSingle(q)}
-                        >
-                          Print
-                        </Button>
+                      <TableCell className="text-right space-x-2">
+                        {/* Edit Button */}
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => openEditDialog(q)}
+                              style={{
+                                backgroundColor: "var(--card-colour-7)",
+                              }}
+                              className="text-white"
+                            >
+                              <SquarePen size={16} />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>Edit QR code</p>
+                          </TooltipContent>
+                        </Tooltip>
+
+                        {/* Delete Button */}
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              size="sm"
+                              variant="destructive"
+                              onClick={() => handleDelete(q.id)}
+                              style={{
+                                backgroundColor: "var(--card-colour-4)",
+                              }}
+                            >
+                              <Trash size={16} />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>Delete QR code</p>
+                          </TooltipContent>
+                        </Tooltip>
+
+                        {/* Print Button */}
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              onClick={() => handlePrintSingle(q)}
+                              style={{
+                                backgroundColor: "var(--card-colour-3)",
+                              }}
+                              className="text-white"
+                            >
+                              <Printer size={16} />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>Print QR code</p>
+                          </TooltipContent>
+                        </Tooltip>
                       </TableCell>
                     </TableRow>
                   );
@@ -455,6 +718,125 @@ export default function QRManagementPage() {
           )}
         </CardContent>
       </Card>
+      {/* ✨ Edit Dialog Component */}
+      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit QR Code</DialogTitle>
+          </DialogHeader>
+          {editingQr && (
+            <div className="space-y-4 py-2">
+              {/* Conditional form for IDENTITY type */}
+              {editingQr.type === "IDENTITY" && (
+                <>
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-studentName">Student Name</Label>
+                    <Input
+                      id="edit-studentName"
+                      value={editForm.studentName}
+                      onChange={(e) =>
+                        setEditForm({
+                          ...editForm,
+                          studentName: e.target.value,
+                        })
+                      }
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-studentClass">Class</Label>
+                    <Input
+                      id="edit-studentClass"
+                      value={editForm.studentClass}
+                      onChange={(e) =>
+                        setEditForm({
+                          ...editForm,
+                          studentClass: e.target.value,
+                        })
+                      }
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-studentGrade">Grade</Label>
+                    <Input
+                      id="edit-studentGrade"
+                      value={editForm.studentGrade}
+                      onChange={(e) =>
+                        setEditForm({
+                          ...editForm,
+                          studentGrade: e.target.value,
+                        })
+                      }
+                    />
+                  </div>
+                </>
+              )}
+              {/* Conditional form for PRESET type */}
+              {editingQr.type === "PRESET" && (
+                <>
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-group">Group</Label>
+                    <Select
+                      value={editForm.groupId}
+                      onValueChange={(v) =>
+                        setEditForm({ ...editForm, groupId: v })
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select Group" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {groups.map((g) => (
+                          <SelectItem key={g.id} value={g.id}>
+                            {g.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-amount">Amount</Label>
+                    <Input
+                      id="edit-amount"
+                      type="number"
+                      value={editForm.amount}
+                      onChange={(e) =>
+                        setEditForm({ ...editForm, amount: e.target.value })
+                      }
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-label">Label (optional)</Label>
+                    <Input
+                      id="edit-label"
+                      value={editForm.label}
+                      onChange={(e) =>
+                        setEditForm({ ...editForm, label: e.target.value })
+                      }
+                    />
+                  </div>
+                </>
+              )}
+              {/* Common field for Is Active status */}
+              <div className="flex items-center space-x-2 pt-2">
+                <Checkbox
+                  id="edit-isActive"
+                  checked={editForm.isActive}
+                  onCheckedChange={(checked) =>
+                    setEditForm({ ...editForm, isActive: !!checked })
+                  }
+                />
+                <Label htmlFor="edit-isActive">QR Code is Active</Label>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button variant="outline">Cancel</Button>
+            </DialogClose>
+            <Button onClick={handleUpdate}>Save Changes</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

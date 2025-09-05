@@ -133,11 +133,11 @@ export default function LoginPage() {
         <div className="pt-8 flex justify-center">
           <Link href="/" className="inline-flex">
             <Image
-              src="/sqratchLogo.png"
-              alt="SQRATCH"
-              className="h-10 w-auto mx-auto translate-x-[0.15rem] sm:translate-x-0"
-              width={40}
-              height={40}
+              src="/assets/logos/ChessedLogo.jpg"
+              alt="Chessed Logo"
+              className="w-auto mx-auto translate-x-[0.15rem] sm:translate-x-0"
+              width={60}
+              height={60}
             />
           </Link>
         </div>
