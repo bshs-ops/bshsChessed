@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Sqratch",
+  title: "Charity Tracker",
   description:
     "Signup with your email and acccess private community in Minds.com",
 };

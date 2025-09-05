@@ -1,7 +1,7 @@
 import React from "react";
 
 export const metadata = {
-  title: "Home - SQRATCH",
+  title: "Home - Charity Tracker",
 };
 
 export default function HomeLayout({

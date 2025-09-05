@@ -1,5 +1,5 @@
 export const metadata = {
-  title: "Login - SQRATCH",
+  title: "Login - Charity Tracker",
 };
 
 export default function LoginLayout({

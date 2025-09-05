@@ -214,7 +214,7 @@ export default function LoginPage() {
 
         {/* Footer */}
         <div className="pb-6 text-center text-gray-400">
-          © {new Date().getFullYear()} SQRATCH. All rights reserved.
+          © {new Date().getFullYear()} Charity Tracker. All rights reserved.
         </div>
       </div>
     </section>
