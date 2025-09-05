@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { DollarSign, ChartColumnBig } from "lucide-react";
+import { usePageHeader } from "@/components/page-header-context";
 
 // Types
 type DashboardStats = {
@@ -26,6 +27,12 @@ export default function AdminDashboardPage() {
 
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
+
+  const { setTitle } = usePageHeader();
+
+  useEffect(() => {
+    setTitle("Admin Dashboard");
+  }, [setTitle]);
 
   const fetchStats = useCallback(async () => {
     setLoading(true);
@@ -63,11 +70,12 @@ export default function AdminDashboardPage() {
   return (
     <div className="min-h-screen p-8 space-y-10">
       <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-semibold">Admin Dashboard</h1>
+        <h1 className="text-3xl font-semibold"></h1>
         <Button
           onClick={fetchStats}
           disabled={loading}
-          className="bg-[#3b639a]"
+          style={{ backgroundColor: "var(--card-colour-7)" }}
+          className="text-white"
         >
           {loading ? "Refreshing…" : "Refresh"}
         </Button>

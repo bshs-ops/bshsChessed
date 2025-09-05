@@ -32,6 +32,13 @@ import {
   SelectItem,
 } from "@/components/ui/select";
 import { Card, CardHeader, CardContent } from "@/components/ui/card";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { SquarePen, Trash } from "lucide-react";
+import { usePageHeader } from "@/components/page-header-context";
 
 type AdminUser = {
   id: string;
@@ -53,6 +60,12 @@ export default function AdminUsersPage() {
     role: "ADMIN" as "USER" | "ADMIN",
   });
   const [editId, setEditId] = useState<string | null>(null);
+
+  const { setTitle } = usePageHeader();
+
+  useEffect(() => {
+    setTitle("User Management"); // ✅ Show in layout header
+  }, [setTitle]);
 
   const fetchUsers = async () => {
     setLoading(true);
@@ -165,7 +178,7 @@ export default function AdminUsersPage() {
     <div className="min-h-screen p-8">
       <Card className="mx-auto max-w-6xl">
         <CardHeader className="flex items-center justify-between">
-          <h1 className="text-2xl font-semibold">Admin Users</h1>
+          <h1 className="text-2xl font-semibold">Users</h1>
 
           {/* Create Admin Dialog */}
           <Dialog
@@ -180,7 +193,7 @@ export default function AdminUsersPage() {
                 onClick={() => {
                   resetForm(); // Extra safety, though not strictly necessary with onOpenChange
                 }}
-                className="bg-[#3b639a]"
+                style={{ backgroundColor: "var(--card-colour-3)" }}
               >
                 Create User
               </Button>
@@ -278,16 +291,43 @@ export default function AdminUsersPage() {
                       {new Date(u.createdAt).toLocaleString()}
                     </TableCell>
                     <TableCell className="space-x-2">
-                      <Button size="sm" onClick={() => openEdit(u)}>
-                        Edit
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="destructive"
-                        onClick={() => handleDelete(u.id)}
-                      >
-                        Delete
-                      </Button>
+                      {/* Edit Button */}
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => openEdit(u)}
+                            style={{
+                              backgroundColor: "var(--card-colour-7)",
+                            }}
+                            className="text-white"
+                          >
+                            <SquarePen size={16} />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>Edit QR code</p>
+                        </TooltipContent>
+                      </Tooltip>
+                      {/* Delete Button */}
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            size="sm"
+                            variant="destructive"
+                            onClick={() => handleDelete(u.id)}
+                            style={{
+                              backgroundColor: "var(--card-colour-4)",
+                            }}
+                          >
+                            <Trash size={16} />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>Delete QR code</p>
+                        </TooltipContent>
+                      </Tooltip>
                     </TableCell>
                   </TableRow>
                 ))}

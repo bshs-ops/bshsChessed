@@ -29,14 +29,11 @@ function randomSixDigits() {
   return Math.floor(100000 + Math.random() * 900000); // 100000–999999
 }
 
-// Content shown inside the QR. You can change these paths as you implement the scanner flow.
-function buildIdentityRedeemUrl(token: string) {
-  // e.g., your scanning page for identity tokens
-  return `${process.env.DOMAIN}/redeemQR/${token}`;
-}
-function buildPresetRedeemUrl(token: string) {
-  // e.g., your scanning page for preset tokens (fund+amount)
-  return `${process.env.DOMAIN}/redeemQR/preset/${token}`;
+// We'll just use the token directly in the QR code instead of a full URL
+// This makes the QR code simpler and more portable
+// The scanner application will handle the token validation
+function getQrValue(token: string) {
+  return token;
 }
 
 type Body =
@@ -108,9 +105,9 @@ export async function POST(request: NextRequest) {
 
       // 2) Create token + PNG buffer
       const token = nanoid();
-      const redeemUrl = buildIdentityRedeemUrl(token);
+      const qrValue = getQrValue(token);
 
-      const pngBuffer = await QRCode.toBuffer(redeemUrl, {
+      const pngBuffer = await QRCode.toBuffer(qrValue, {
         type: "png",
         width: 500,
         color: { dark: "#000000", light: "#00000000" }, // transparent bg
@@ -195,9 +192,9 @@ export async function POST(request: NextRequest) {
 
     // 1) Create token + PNG buffer
     const token = nanoid();
-    const redeemUrl = buildPresetRedeemUrl(token);
+    const qrValue = getQrValue(token);
 
-    const pngBuffer = await QRCode.toBuffer(redeemUrl, {
+    const pngBuffer = await QRCode.toBuffer(qrValue, {
       type: "png",
       width: 500,
       color: { dark: "#000000", light: "#00000000" },

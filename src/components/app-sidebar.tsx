@@ -5,8 +5,8 @@ import {
   LayoutDashboard,
   QrCode,
   ListTodo,
-  Printer,
   UserPlus,
+  ScanBarcode,
 } from "lucide-react";
 import { signOut } from "next-auth/react";
 import { useRouter } from "next/navigation";
@@ -48,14 +48,14 @@ export function AppSidebar() {
   // Admin-specific items.
   const adminItems = [
     {
+      title: "Scanner",
+      url: "/admin/qr-scanner",
+      icon: ScanBarcode,
+    },
+    {
       title: "QR Management",
       url: "/admin/qr-management",
       icon: ListTodo,
-    },
-    {
-      title: "Print QR",
-      url: "/admin/print-qr",
-      icon: Printer,
     },
     {
       title: "User Management",

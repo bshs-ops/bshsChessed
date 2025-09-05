@@ -5,7 +5,13 @@ import React, { useState, useEffect } from "react";
 import axios from "axios";
 import ExcelJS from "exceljs";
 import { toast } from "sonner";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription, // ✨ Import CardDescription
+} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -16,8 +22,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import Image from "next/image";
-import { useRouter } from "next/navigation"; // add this at the top
+import { useRouter } from "next/navigation";
+import { FileUp, FileDown } from "lucide-react"; // ✨ Import icons
+import { usePageHeader } from "@/components/page-header-context";
 
 type Group = { id: string; name: string };
 
@@ -31,9 +38,14 @@ export default function GenerateQRPage() {
   const [presetLabel, setPresetLabel] = useState("");
   const [groups, setGroups] = useState<Group[]>([]);
   const [loading, setLoading] = useState(false);
-  const [resultUrl] = useState<string>("");
 
   const router = useRouter();
+
+  const { setTitle } = usePageHeader();
+
+  useEffect(() => {
+    setTitle("Generate QR Codes");
+  }, [setTitle]);
 
   // Fetch PRESET groups
   useEffect(() => {
@@ -211,171 +223,197 @@ export default function GenerateQRPage() {
   };
 
   return (
-    <div className="min-h-screen py-12 px-6 space-y-10 relative">
+    <div className="p-4 sm:p-6 lg:p-8 space-y-6">
       {loading && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
           <div className="text-white text-lg font-semibold">Processing…</div>
         </div>
       )}
 
-      {/* Manual Generate QR */}
-      <Card className="mx-auto max-w-xl w-full">
-        <CardHeader>
-          <CardTitle className="text-2xl">Generate Student QR</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-5">
-          {/* QR Type */}
-          <div className="space-y-2">
-            <Label htmlFor="qrType">QR Type</Label>
-            <Select
-              value={qrType}
-              onValueChange={(value: "IDENTITY" | "PRESET") => setQrType(value)}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Select QR Type" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="IDENTITY">IDENTITY (Student)</SelectItem>
-                <SelectItem value="PRESET">PRESET (Fund + Amount)</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+      {/* ✨ Page Header */}
+      <div className="space-y-1">
+        {/* <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">
+          Generate QR Codes
+        </h1> */}
+        <p className="text-muted-foreground">
+          Create individual QR codes manually or upload an Excel file for bulk
+          generation.
+        </p>
+      </div>
 
-          {/* IDENTITY QR Inputs */}
-          {qrType === "IDENTITY" && (
-            <>
+      {/* ✨ Two-column layout */}
+      <div className="grid grid-cols-1 gap-8 lg:grid-cols-3 lg:gap-12">
+        {/* Left Column: Main Form */}
+        <div className="lg:col-span-2">
+          <Card>
+            <CardHeader>
+              <CardTitle>Create a Single QR Code</CardTitle>
+              <CardDescription>
+                Fill in the details below to generate one QR code at a time.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
               <div className="space-y-2">
-                <Label htmlFor="studentName">Student Name</Label>
-                <Input
-                  id="studentName"
-                  value={studentName}
-                  onChange={(e) => setStudentName(e.target.value)}
-                  placeholder="e.g., John Doe"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="studentClass">Class</Label>
-                <Input
-                  id="studentClass"
-                  value={studentClass}
-                  onChange={(e) => setStudentClass(e.target.value)}
-                  placeholder="e.g., B"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="studentGrade">Grade</Label>
-                <Input
-                  id="studentGrade"
-                  value={studentGrade}
-                  onChange={(e) => setStudentGrade(e.target.value)}
-                  placeholder="e.g., 6"
-                />
-              </div>
-            </>
-          )}
-
-          {/* PRESET QR Inputs */}
-          {qrType === "PRESET" && (
-            <>
-              <div className="space-y-2">
-                <Label htmlFor="group">Group</Label>
+                <Label>QR Type</Label>
                 <Select
-                  value={selectedGroupId}
-                  onValueChange={(value) => setSelectedGroupId(value)}
+                  value={qrType}
+                  onValueChange={(v: "IDENTITY" | "PRESET") => setQrType(v)}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Select Group" />
+                    <SelectValue placeholder="Select QR Type" />
                   </SelectTrigger>
                   <SelectContent>
-                    {groups.map((g) => (
-                      <SelectItem key={g.id} value={g.id}>
-                        {g.name}
-                      </SelectItem>
-                    ))}
+                    <SelectItem value="IDENTITY">IDENTITY (Student)</SelectItem>
+                    <SelectItem value="PRESET">
+                      PRESET (Fund + Amount)
+                    </SelectItem>
                   </SelectContent>
                 </Select>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="amount">Amount</Label>
-                <Input
-                  id="amount"
-                  type="number"
-                  value={presetAmount}
-                  onChange={(e) => setPresetAmount(e.target.value)}
-                  placeholder="e.g., 50"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="label">Label (optional)</Label>
-                <Input
-                  id="label"
-                  value={presetLabel}
-                  onChange={(e) => setPresetLabel(e.target.value)}
-                  placeholder="e.g., Lunch Fund"
-                />
-              </div>
-            </>
-          )}
 
-          {/* Generate button */}
-          <Button className="w-full" onClick={handleGenerate}>
-            Generate QR
-          </Button>
+              {qrType === "IDENTITY" && (
+                <>
+                  <div className="space-y-2">
+                    <Label htmlFor="studentName">Student Name</Label>
+                    <Input
+                      id="studentName"
+                      value={studentName}
+                      onChange={(e) => setStudentName(e.target.value)}
+                      placeholder="e.g., John Doe"
+                    />
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="studentClass">Class</Label>
+                      <Input
+                        id="studentClass"
+                        value={studentClass}
+                        onChange={(e) => setStudentClass(e.target.value)}
+                        placeholder="e.g., B"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="studentGrade">Grade</Label>
+                      <Input
+                        id="studentGrade"
+                        value={studentGrade}
+                        onChange={(e) => setStudentGrade(e.target.value)}
+                        placeholder="e.g., 6"
+                      />
+                    </div>
+                  </div>
+                </>
+              )}
 
-          {/* Show QR result */}
-          {resultUrl && (
-            <div className="flex justify-center">
-              <Image
-                src={resultUrl}
-                alt="Generated QR"
-                width={200}
-                height={200}
-              />
-            </div>
-          )}
-        </CardContent>
-      </Card>
+              {qrType === "PRESET" && (
+                <>
+                  <div className="space-y-2">
+                    <Label htmlFor="group">Group</Label>
+                    <Select
+                      value={selectedGroupId}
+                      onValueChange={setSelectedGroupId}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select Group" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {groups.map((g) => (
+                          <SelectItem key={g.id} value={g.id}>
+                            {g.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="amount">Amount</Label>
+                    <Input
+                      id="amount"
+                      type="number"
+                      value={presetAmount}
+                      onChange={(e) => setPresetAmount(e.target.value)}
+                      placeholder="e.g., 50"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="label">Label (optional)</Label>
+                    <Input
+                      id="label"
+                      value={presetLabel}
+                      onChange={(e) => setPresetLabel(e.target.value)}
+                      placeholder="e.g., Lunch Fund"
+                    />
+                  </div>
+                </>
+              )}
 
-      {/* Excel Upload */}
-      <Card className="mx-auto max-w-xl w-full">
-        <CardHeader>
-          <CardTitle className="text-2xl">Excel Upload</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <Button
-            className="w-full"
-            onClick={() => triggerFileInput("IDENTITY")}
-          >
-            Upload Identity Excel
-          </Button>
-          <Button className="w-full" onClick={() => triggerFileInput("PRESET")}>
-            Upload Preset Excel
-          </Button>
-        </CardContent>
-      </Card>
+              <Button size="lg" className="w-full" onClick={handleGenerate}>
+                Generate QR
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
 
-      {/* Template Download */}
-      <Card className="mx-auto max-w-xl w-full">
-        <CardHeader>
-          <CardTitle className="text-2xl">Download Templates</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <a
-            href="/assets/excelTemplates/IdentityQRTemplate.xlsx"
-            download
-            className="w-full block"
-          >
-            <Button className="w-full">Download Identity Template</Button>
-          </a>
-          <a
-            href="/assets/excelTemplates/PresetQRTemplate.xlsx"
-            download
-            className="w-full block"
-          >
-            <Button className="w-full">Download Preset Template</Button>
-          </a>
-        </CardContent>
-      </Card>
+        {/* Right Column: Bulk Actions */}
+        <div className="space-y-8 lg:col-span-1">
+          <Card>
+            <CardHeader>
+              <CardTitle>Excel Upload</CardTitle>
+              <CardDescription>
+                Generate multiple QR codes at once by uploading a formatted
+                Excel file.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <Button
+                variant="outline"
+                className="w-full"
+                onClick={() => triggerFileInput("IDENTITY")}
+              >
+                <FileUp className="mr-2 h-4 w-4" /> Upload Identity Excel
+              </Button>
+              <Button
+                variant="outline"
+                className="w-full"
+                onClick={() => triggerFileInput("PRESET")}
+              >
+                <FileUp className="mr-2 h-4 w-4" /> Upload Preset Excel
+              </Button>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Download Templates</CardTitle>
+              <CardDescription>
+                Get the required Excel templates to ensure your data is
+                formatted correctly.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <a
+                href="/assets/excelTemplates/IdentityQRTemplate.xlsx"
+                download
+                className="w-full block"
+              >
+                <Button variant="outline" className="w-full">
+                  <FileDown className="mr-2 h-4 w-4" /> Download Identity
+                  Template
+                </Button>
+              </a>
+              <a
+                href="/assets/excelTemplates/PresetQRTemplate.xlsx"
+                download
+                className="w-full block"
+              >
+                <Button variant="outline" className="w-full">
+                  <FileDown className="mr-2 h-4 w-4" /> Download Preset Template
+                </Button>
+              </a>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
     </div>
   );
 }

@@ -41,6 +41,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
+import { usePageHeader } from "@/components/page-header-context";
 
 type QRCode = {
   id: string;
@@ -107,6 +108,12 @@ export default function QRManagementPage() {
     label: "",
     isActive: true,
   });
+
+  const { setTitle } = usePageHeader();
+
+  useEffect(() => {
+    setTitle("QR Code Management"); // ✅ Show in layout header
+  }, [setTitle]);
 
   const fetchData = async () => {
     try {
@@ -470,8 +477,9 @@ export default function QRManagementPage() {
     <div className="min-h-screen p-8">
       <Card className="mx-auto max-w-6xl">
         <CardHeader className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <CardTitle>QR Code Management</CardTitle>
+          {/* <CardTitle>QR Code Management</CardTitle> */}
 
+          {/* ✨ Group 1: Filters (aligns to the left) */}
           <div className="flex flex-col sm:flex-row gap-3">
             {/* Filter: Type */}
             <Select
@@ -504,7 +512,10 @@ export default function QRManagementPage() {
                 <SelectItem value="NO">Inactive</SelectItem>
               </SelectContent>
             </Select>
+          </div>
 
+          {/* ✨ Group 2: Action Buttons (gets pushed to the right) */}
+          <div className="flex flex-col sm:flex-row gap-3">
             {/* Export Excel */}
             <Tooltip>
               <TooltipTrigger asChild>
