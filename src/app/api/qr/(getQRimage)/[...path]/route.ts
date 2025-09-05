@@ -1,34 +1,18 @@
-// src/app/api/qr/(getQRimage)/[...path]/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
-interface ParamCtx {
-  params?: Record<string, string>;
-}
-
 const BUCKET = "qr-codes";
 
-type Ctx =
-  | { params: Promise<{ path: string[] | string }> }
-  | { params: { path: string[] | string } };
+export async function GET(
+  req: NextRequest,
+  context: { params: Promise<{ path: string[] }> } // ✅ App Router expects params as Promise
+) {
+  // Await params from Next.js
+  const { path } = await context.params;
 
-export async function GET(req: NextRequest, ctx: Ctx) {
-  // 👇 Handle both async and sync params
-  const raw = "params" in ctx ? (await (ctx as ParamCtx).params) ?? {} : {};
-  let segments: string[] = [];
+  const segments = Array.isArray(path) ? path : [path];
 
-  if (Array.isArray(raw.path)) segments = raw.path;
-  else if (typeof raw.path === "string" && raw.path.length)
-    segments = [raw.path];
-
-  // Fallback: derive from URL (helps during odd edge cases)
-  if (segments.length === 0) {
-    const after = new URL(req.url).pathname.replace(/^\/api\/qr\/?/, "");
-    if (after) segments = after.split("/").map(decodeURIComponent);
-  }
-
-  // Final object key inside the Supabase bucket
-  const fileKey = segments.map(decodeURIComponent).join("/"); // e.g. "identity/john-cena_531475.png"
+  const fileKey = segments.map(decodeURIComponent).join("/");
   if (!fileKey) {
     return NextResponse.json({ error: "Missing file key" }, { status: 400 });
   }
@@ -40,7 +24,6 @@ export async function GET(req: NextRequest, ctx: Ctx) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  // Content-Type based on extension (optional but nice)
   const isPng = fileKey.toLowerCase().endsWith(".png");
   const isJpg = /\.(jpe?g)$/i.test(fileKey);
   const isSvg = fileKey.toLowerCase().endsWith(".svg");
@@ -52,7 +35,7 @@ export async function GET(req: NextRequest, ctx: Ctx) {
     ? "image/svg+xml"
     : "application/octet-stream";
 
-  return new NextResponse(data as string | ArrayBuffer | Blob, {
+  return new NextResponse(data as Blob, {
     headers: {
       "Content-Type": contentType,
       "Cache-Control": "public, max-age=31536000, immutable",
