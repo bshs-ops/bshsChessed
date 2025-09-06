@@ -6,11 +6,23 @@ import { useEffect, useRef } from "react";
 type QrScannerProps = {
   onScanSuccess: (decodedText: string) => void;
   onScanFailure?: (errorMessage: string) => void;
+  continuousScan?: boolean; // Add option for continuous scanning
+  physicalScanner?: boolean; // Optimized for physical scanner
 };
 
-const QrScanner = ({ onScanSuccess, onScanFailure }: QrScannerProps) => {
+const QrScanner = ({
+  onScanSuccess,
+  onScanFailure,
+  continuousScan = false,
+  physicalScanner = false,
+}: QrScannerProps) => {
   const html5QrCode = useRef<Html5Qrcode | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  // For continuous scanning mode, track the last scanned code to prevent duplicates
+  const lastScannedRef = useRef<{ code: string; timestamp: number } | null>(
+    null
+  );
 
   useEffect(() => {
     // Cleanup function to stop scanning and clear resources
@@ -26,6 +38,32 @@ const QrScanner = ({ onScanSuccess, onScanFailure }: QrScannerProps) => {
           console.error("Failed to clean up scanner:", err);
         }
       }
+    };
+
+    // Wrapper for onScanSuccess to handle continuous scanning
+    const handleScanSuccess = (decodedText: string) => {
+      // In continuous scanning mode, prevent duplicate scans
+      if (continuousScan) {
+        const now = Date.now();
+
+        // Debounce repeated scans of the same code (within 1.5 seconds)
+        if (
+          lastScannedRef.current &&
+          lastScannedRef.current.code === decodedText &&
+          now - lastScannedRef.current.timestamp < 1500
+        ) {
+          return; // Skip this scan as it's likely a duplicate
+        }
+
+        // Update the last scanned code
+        lastScannedRef.current = {
+          code: decodedText,
+          timestamp: now,
+        };
+      }
+
+      // Call the provided onScanSuccess handler
+      onScanSuccess(decodedText);
     };
 
     // Initialize and start scanner
@@ -50,15 +88,21 @@ const QrScanner = ({ onScanSuccess, onScanFailure }: QrScannerProps) => {
         // Create scanner instance
         html5QrCode.current = new Html5Qrcode(qrCodeId);
 
+        // Configure scanner based on mode
+        const config = {
+          fps: physicalScanner ? 20 : 10, // Higher FPS for physical scanners
+          qrbox: { width: 250, height: 250 },
+          aspectRatio: 1.0,
+          disableFlip: physicalScanner, // Less processing for physical scanners
+          formatsToSupport: physicalScanner ? [0, 1, 2, 3] : undefined, // Limited formats for physical scanners
+        };
+
         // Start camera with default device
         html5QrCode.current
           .start(
             { facingMode: "environment" }, // Use back camera when available
-            {
-              fps: 10,
-              qrbox: { width: 250, height: 250 },
-            },
-            onScanSuccess,
+            config,
+            handleScanSuccess, // Use our wrapped handler
             onScanFailure || (() => {})
           )
           .catch((err) => {
@@ -74,7 +118,7 @@ const QrScanner = ({ onScanSuccess, onScanFailure }: QrScannerProps) => {
 
     // Clean up when component unmounts
     return cleanupScanner;
-  }, [onScanSuccess, onScanFailure]);
+  }, [onScanSuccess, onScanFailure, continuousScan, physicalScanner]);
 
   return (
     <div

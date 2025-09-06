@@ -1,14 +1,25 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { DM_Sans, Geist_Mono, Pacifico } from "next/font/google";
 import "./globals.css";
 import AuthProvider from "@/context/AuthProvider";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+// Use DM Sans as the primary font
+const dmSans = DM_Sans({
+  variable: "--font-dm-sans",
   subsets: ["latin"],
-  weight: ["400", "700"],
+  // You can specify the weight range based on what you need
+  weight: ["100", "200", "300", "400", "500", "600", "700", "800", "900"],
+  style: ["normal", "italic"],
 });
 
+// Add Pacifico for decorative headings or special elements
+const pacifico = Pacifico({
+  variable: "--font-pacifico",
+  subsets: ["latin"],
+  weight: ["400"],
+});
+
+// Keep Geist Mono for monospace if needed
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
@@ -29,7 +40,7 @@ export default function RootLayout({
     <html lang="en">
       <AuthProvider>
         <body
-          className={`${geistSans.variable} ${geistMono.variable} font-sans antialiased`}
+          className={`${dmSans.variable} ${pacifico.variable} ${geistMono.variable} font-sans antialiased`}
         >
           {children}
         </body>
