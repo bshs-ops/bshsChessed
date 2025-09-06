@@ -539,7 +539,7 @@ export default function ScannerPage() {
           <CardHeader>
             <CardTitle>Scan QR Code</CardTitle>
             <CardDescription>
-              Point your camera at a student's QR code.
+              Point your camera at a student&apos;s QR code.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -803,7 +803,7 @@ export default function ScannerPage() {
                         <AlertDescription>
                           {physicalScannedIdentity
                             ? `Scanned: ${physicalScannedIdentity.donor?.name}`
-                            : "Scan the student's identity QR code first."}
+                            : "Scan the student&apos;s identity QR code first."}
                         </AlertDescription>
                       </Alert>
 
