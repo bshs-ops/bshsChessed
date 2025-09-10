@@ -3,7 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/options";
 import prisma from "@/lib/prisma";
 
-export async function GET(req: NextRequest) {
+export async function GET() {
   try {
     // Check auth session
     const session = await getServerSession(authOptions);
@@ -45,11 +45,10 @@ export async function GET(req: NextRequest) {
     });
 
     return NextResponse.json({ data: transformedDonors }, { status: 200 });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error fetching donors:", error);
-    return NextResponse.json(
-      { error: error.message || "Failed to fetch donors" },
-      { status: 500 }
-    );
+    const errorMessage =
+      error instanceof Error ? error.message : "Failed to fetch donors";
+    return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }

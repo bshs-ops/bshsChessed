@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
   const endDate = searchParams.get("endDate");
 
   // Build filter object
-  const filter: any = {};
+  const filter: Record<string, any> = {};
 
   if (groupId) {
     filter.groupId = groupId;
