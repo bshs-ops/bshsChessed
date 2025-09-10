@@ -7,6 +7,8 @@ import {
   ListTodo,
   UserPlus,
   ScanBarcode,
+  DollarSign,
+  ChartColumnBig,
 } from "lucide-react";
 import { signOut } from "next-auth/react";
 import { useRouter } from "next/navigation";
@@ -39,6 +41,11 @@ export function AppSidebar() {
       icon: LayoutDashboard,
     },
     {
+      title: "Analytics",
+      url: "/analytics",
+      icon: ChartColumnBig,
+    },
+    {
       title: "Generate QR",
       url: "/generateQR",
       icon: QrCode,
@@ -56,6 +63,16 @@ export function AppSidebar() {
       title: "QR Management",
       url: "/admin/qr-management",
       icon: ListTodo,
+    },
+    {
+      title: "Volunteer",
+      url: "/admin/volunteer",
+      icon: ListTodo,
+    },
+    {
+      title: "Finances",
+      url: "/admin/finance",
+      icon: DollarSign,
     },
     {
       title: "User Management",

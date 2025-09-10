@@ -66,7 +66,10 @@ type QRCode = {
 };
 
 // Type for Groups (for the edit dropdown)
-type Group = { id: string; name: string };
+type Group = {
+  id: string;
+  name: string;
+};
 
 // Type for the edit form state
 type EditFormState = {
@@ -99,6 +102,7 @@ export default function QRManagementPage() {
   const [editOpen, setEditOpen] = useState(false);
   const [editingQr, setEditingQr] = useState<QRCode | null>(null);
   const [groups, setGroups] = useState<Group[]>([]);
+
   const [editForm, setEditForm] = useState<EditFormState>({
     studentName: "",
     studentClass: "",

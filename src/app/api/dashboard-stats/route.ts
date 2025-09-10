@@ -19,6 +19,7 @@ export async function GET() {
     donorTotal,
     groupTotal,
     donationAgg,
+    donationCount,
   ] = await Promise.all([
     prisma.budget.aggregate({ _sum: { amount: true } }),
     prisma.expense.aggregate({ _sum: { amount: true } }),
@@ -27,6 +28,7 @@ export async function GET() {
     prisma.donor.count(),
     prisma.group.count(),
     prisma.donation.aggregate({ _sum: { amount: true } }),
+    prisma.donation.count(),
   ]);
 
   const budget = Number(budgetAgg._sum.amount ?? 0);
@@ -44,6 +46,7 @@ export async function GET() {
       donorTotal,
       groupTotal,
       totalDonations,
+      donationCount,
     },
   });
 }
