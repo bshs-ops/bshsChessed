@@ -20,6 +20,7 @@ export async function GET(request: NextRequest) {
   const endDate = searchParams.get("endDate");
 
   // Build filter object
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const filter: Record<string, any> = {};
 
   if (groupId) {

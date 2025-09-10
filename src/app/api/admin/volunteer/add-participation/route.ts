@@ -35,10 +35,15 @@ export async function POST(req: NextRequest) {
     });
 
     return NextResponse.json({ data: participation }, { status: 200 });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error adding participation:", error);
     return NextResponse.json(
-      { error: error.message || "Failed to add participation" },
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to add participation",
+      },
       { status: 500 }
     );
   }
