@@ -294,12 +294,20 @@ export default function GenerateQRPage() {
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="studentGrade">Grade</Label>
-                      <Input
-                        id="studentGrade"
+                      <Select
                         value={studentGrade}
-                        onChange={(e) => setStudentGrade(e.target.value)}
-                        placeholder="e.g., 6"
-                      />
+                        onValueChange={(v) => setStudentGrade(v)}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select Grade" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="9">Grade 9</SelectItem>
+                          <SelectItem value="10">Grade 10</SelectItem>
+                          <SelectItem value="11">Grade 11</SelectItem>
+                          <SelectItem value="12">Grade 12</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
                   </div>
                 </>

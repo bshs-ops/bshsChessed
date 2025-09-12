@@ -422,6 +422,23 @@ export default function QRManagementPage() {
       doc.setDrawColor(200);
       doc.rect(startX, startY, cardW, cardH);
 
+      // Add logo in the top-right corner of the card
+      try {
+        const logoSize = 24; // Small logo size
+        const logoX = startX + cardW - logoSize - 8; // 8pt padding from right edge
+        const logoY = startY + cardH - logoSize - 7; // 7pt padding from top edge
+        doc.addImage(
+          "/assets/logos/logo-qr.png",
+          "PNG",
+          logoX,
+          logoY,
+          logoSize,
+          logoSize
+        );
+      } catch (error) {
+        console.warn("Could not add logo to PDF:", error);
+      }
+
       // Caption
       const caption = getCaption(q) || "";
       doc.setFont("helvetica", "bold");
@@ -446,7 +463,7 @@ export default function QRManagementPage() {
 
       // ===== move QR down so it never overlaps text =====
       const topAfterTextY = meta ? startY + 44 : startY + 28;
-      const qrTopPadding = 22; // extra space under text
+      const qrTopPadding = 10; // extra space under text
       const imgX = startX + (cardW - qrSize) / 2;
       const imgY = topAfterTextY + qrTopPadding;
 
@@ -462,6 +479,13 @@ export default function QRManagementPage() {
           align: "center",
         });
       }
+
+      // Add "BAIS SHAINDEL CHESSED" text at the bottom of the QR code
+      const chessedText = "BAIS SHAINDEL CHESSED";
+      const chessedY = imgY + qrSize + 16; // 16pt space below QR code
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(10);
+      doc.text(chessedText, startX + cardW / 2, chessedY, { align: "center" });
     }
 
     doc.save("qr-codes.pdf");
