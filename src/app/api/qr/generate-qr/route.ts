@@ -42,6 +42,7 @@ type Body =
       studentName: string;
       studentClass: string;
       studentGrade: string;
+      studentYear: string;
     }
   | {
       type: "PRESET";
@@ -75,11 +76,14 @@ export async function POST(request: NextRequest) {
 
   try {
     if (body.type === "IDENTITY") {
-      const { studentName, studentClass, studentGrade } = body;
+      const { studentName, studentClass, studentGrade, studentYear } = body;
 
-      if (!studentName || !studentClass || !studentGrade) {
+      if (!studentName || !studentClass || !studentGrade || !studentYear) {
         return NextResponse.json(
-          { error: "studentName, studentClass, studentGrade are required" },
+          {
+            error:
+              "studentName, studentClass, studentGrade, and studentYear are required",
+          },
           { status: 400 }
         );
       }
@@ -90,6 +94,7 @@ export async function POST(request: NextRequest) {
           name: studentName,
           className: studentClass,
           gradeName: studentGrade,
+          year: studentYear,
         },
       });
 
@@ -99,6 +104,7 @@ export async function POST(request: NextRequest) {
             name: studentName,
             className: studentClass,
             gradeName: studentGrade,
+            year: studentYear,
           },
         });
       }
@@ -149,7 +155,13 @@ export async function POST(request: NextRequest) {
         },
         include: {
           donor: {
-            select: { id: true, name: true, className: true, gradeName: true },
+            select: {
+              id: true,
+              name: true,
+              className: true,
+              gradeName: true,
+              year: true,
+            },
           },
         },
       });

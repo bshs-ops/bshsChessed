@@ -71,6 +71,7 @@ export default function VolunteerPage() {
   const [volunteerDialogOpen, setVolunteerDialogOpen] = useState(false);
   const [selectedVolunteerGroupId, setSelectedVolunteerGroupId] =
     useState<string>("");
+  const [isAddingVolunteers, setIsAddingVolunteers] = useState(false);
 
   // Filter only volunteer groups for the dialog
   const volunteerGroups = useMemo(
@@ -166,9 +167,11 @@ export default function VolunteerPage() {
       return;
     }
 
+    setIsAddingVolunteers(true);
+
     try {
       // Create participation records for each selected student
-      await Promise.all(
+      const results = await Promise.allSettled(
         selectedDonorIds.map((donorId) => {
           return axios.post("/api/admin/volunteer/add-participation", {
             donorId,
@@ -177,9 +180,33 @@ export default function VolunteerPage() {
         })
       );
 
-      toast.success(
-        `Added ${selectedDonorIds.length} volunteer(s) successfully`
-      );
+      // Check results for any failures
+      const successful = results.filter(
+        (result) => result.status === "fulfilled"
+      ).length;
+      const failed = results.filter((result) => result.status === "rejected");
+
+      if (successful > 0) {
+        toast.success(`Added ${successful} volunteer(s) successfully`);
+      }
+
+      // Show specific error messages for duplicates or other failures
+      if (failed.length > 0) {
+        failed.forEach((result) => {
+          if (result.status === "rejected") {
+            const error = result.reason;
+            if (error?.response?.status === 409) {
+              // This is a duplicate entry error
+              toast.warning(
+                "Some students were already volunteers in this group"
+              );
+            } else {
+              toast.error("Some volunteers could not be added");
+            }
+          }
+        });
+      }
+
       setVolunteerDialogOpen(false);
       setSelectedVolunteerGroupId("");
       setSelectedIds(new Set());
@@ -189,6 +216,8 @@ export default function VolunteerPage() {
     } catch (error) {
       console.error("Failed to add volunteers:", error);
       toast.error("Failed to add volunteers");
+    } finally {
+      setIsAddingVolunteers(false);
     }
   };
 
@@ -242,11 +271,16 @@ export default function VolunteerPage() {
           <div className="flex gap-3">
             <Button
               onClick={() => setVolunteerDialogOpen(true)}
-              disabled={selectedIds.size === 0 || viewMode !== "nonVolunteers"}
+              disabled={
+                selectedIds.size === 0 ||
+                viewMode !== "nonVolunteers" ||
+                isAddingVolunteers
+              }
               style={{ backgroundColor: "var(--card-colour-2)" }}
               className="text-white"
             >
-              <UserPlus className="mr-2 h-4 w-4" /> Add as Volunteer
+              <UserPlus className="mr-2 h-4 w-4" />
+              {isAddingVolunteers ? "Adding..." : "Add as Volunteer"}
             </Button>
           </div>
         </CardHeader>
@@ -408,7 +442,20 @@ export default function VolunteerPage() {
       </Card>
 
       {/* Volunteer Selection Dialog */}
-      <Dialog open={volunteerDialogOpen} onOpenChange={setVolunteerDialogOpen}>
+      <Dialog
+        open={volunteerDialogOpen}
+        onOpenChange={(open) => {
+          // Prevent closing dialog while adding volunteers
+          if (!isAddingVolunteers) {
+            setVolunteerDialogOpen(open);
+            // Reset states when dialog is closed
+            if (!open) {
+              setSelectedVolunteerGroupId("");
+              setIsAddingVolunteers(false);
+            }
+          }
+        }}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Add Students as Volunteers</DialogTitle>
@@ -450,14 +497,20 @@ export default function VolunteerPage() {
 
           <DialogFooter>
             <DialogClose asChild>
-              <Button variant="outline">Cancel</Button>
+              <Button variant="outline" disabled={isAddingVolunteers}>
+                Cancel
+              </Button>
             </DialogClose>
             <Button
               onClick={handleAddVolunteer}
-              disabled={!selectedVolunteerGroupId || selectedIds.size === 0}
+              disabled={
+                !selectedVolunteerGroupId ||
+                selectedIds.size === 0 ||
+                isAddingVolunteers
+              }
               style={{ backgroundColor: "var(--card-colour-2)" }}
             >
-              Add Volunteers
+              {isAddingVolunteers ? "Adding Volunteers..." : "Add Volunteers"}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -6,8 +6,9 @@ import Image from "next/image";
 import axios from "axios";
 import ExcelJS from "exceljs";
 import jsPDF from "jspdf";
+import "../../../../../public/assets/fonts/NotoSansHebrew-Regular-normal.js";
 import { toast } from "sonner";
-import { SquarePen, Trash, Printer, Sheet } from "lucide-react";
+import { SquarePen, Trash, Printer, Sheet, Search } from "lucide-react";
 import {
   Tooltip,
   TooltipContent,
@@ -56,6 +57,7 @@ type QRCode = {
     name: string;
     className: string | null;
     gradeName: string | null;
+    year: string | null;
   } | null;
   preset: {
     groupId: string | null;
@@ -77,6 +79,7 @@ type EditFormState = {
   studentName: string;
   studentClass: string;
   studentGrade: string;
+  studentYear: string;
   // PRESET fields
   groupId: string;
   amount: string;
@@ -94,6 +97,10 @@ export default function QRManagementPage() {
     "ALL"
   );
   const [filterActive, setFilterActive] = useState<"ALL" | "YES" | "NO">("ALL");
+  const [filterGrade, setFilterGrade] = useState<string>("ALL");
+  const [filterClass, setFilterClass] = useState<string>("ALL");
+  const [filterYear, setFilterYear] = useState<string>("ALL");
+  const [searchQuery, setSearchQuery] = useState<string>("");
 
   // selection
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -107,6 +114,7 @@ export default function QRManagementPage() {
     studentName: "",
     studentClass: "",
     studentGrade: "",
+    studentYear: "",
     groupId: "",
     amount: "",
     label: "",
@@ -139,6 +147,34 @@ export default function QRManagementPage() {
     fetchData();
   }, []);
 
+  // Helper functions to get unique filter values
+  const getUniqueGrades = () => {
+    const grades = qrCodes
+      .filter((q) => q.type === "IDENTITY" && q.identity?.gradeName)
+      .map((q) => q.identity!.gradeName!)
+      .filter((grade, index, arr) => arr.indexOf(grade) === index)
+      .sort();
+    return grades;
+  };
+
+  const getUniqueClasses = () => {
+    const classes = qrCodes
+      .filter((q) => q.type === "IDENTITY" && q.identity?.className)
+      .map((q) => q.identity!.className!)
+      .filter((className, index, arr) => arr.indexOf(className) === index)
+      .sort();
+    return classes;
+  };
+
+  const getUniqueYears = () => {
+    const years = qrCodes
+      .filter((q) => q.type === "IDENTITY" && q.identity?.year)
+      .map((q) => q.identity!.year!)
+      .filter((year, index, arr) => arr.indexOf(year) === index)
+      .sort();
+    return years;
+  };
+
   const toQrImgUrl = (storagePath: string) =>
     `/api/qr/${storagePath.split("/").map(encodeURIComponent).join("/")}`;
 
@@ -152,9 +188,73 @@ export default function QRManagementPage() {
           : filterActive === "YES"
           ? q.isActive
           : !q.isActive;
-      return matchesType && matchesActive;
+
+      // Only apply grade/class/year filters to IDENTITY type QR codes
+      const matchesGrade =
+        filterGrade === "ALL" ||
+        (q.type === "IDENTITY" && q.identity?.gradeName === filterGrade);
+
+      const matchesClass =
+        filterClass === "ALL" ||
+        (q.type === "IDENTITY" && q.identity?.className === filterClass);
+
+      const matchesYear =
+        filterYear === "ALL" ||
+        (q.type === "IDENTITY" && q.identity?.year === filterYear);
+
+      // Search functionality - searches through relevant text fields
+      const matchesSearch =
+        searchQuery === "" ||
+        (() => {
+          const lowerQuery = searchQuery.toLowerCase();
+
+          // Search in ID
+          if (q.id.toLowerCase().includes(lowerQuery)) return true;
+
+          // Search in type
+          if (q.type.toLowerCase().includes(lowerQuery)) return true;
+
+          // For IDENTITY type, search in name, class, grade, year
+          if (q.type === "IDENTITY" && q.identity) {
+            if (q.identity.name.toLowerCase().includes(lowerQuery)) return true;
+            if (q.identity.className?.toLowerCase().includes(lowerQuery))
+              return true;
+            if (q.identity.gradeName?.toLowerCase().includes(lowerQuery))
+              return true;
+            if (q.identity.year?.toLowerCase().includes(lowerQuery))
+              return true;
+          }
+
+          // For PRESET type, search in group name, amount, label
+          if (q.type === "PRESET" && q.preset) {
+            if (q.preset.groupName?.toLowerCase().includes(lowerQuery))
+              return true;
+            if (q.preset.amount?.toLowerCase().includes(lowerQuery))
+              return true;
+            if (q.preset.label?.toLowerCase().includes(lowerQuery)) return true;
+          }
+
+          return false;
+        })();
+
+      return (
+        matchesType &&
+        matchesActive &&
+        matchesGrade &&
+        matchesClass &&
+        matchesYear &&
+        matchesSearch
+      );
     });
-  }, [qrCodes, filterType, filterActive]);
+  }, [
+    qrCodes,
+    filterType,
+    filterActive,
+    filterGrade,
+    filterClass,
+    filterYear,
+    searchQuery,
+  ]);
 
   // Selection helpers
   const allFilteredSelected =
@@ -214,6 +314,7 @@ export default function QRManagementPage() {
         studentName: qr.identity.name,
         studentClass: qr.identity.className ?? "",
         studentGrade: qr.identity.gradeName ?? "",
+        studentYear: qr.identity.year ?? "",
         groupId: "",
         amount: "",
         label: "",
@@ -224,6 +325,7 @@ export default function QRManagementPage() {
         studentName: "",
         studentClass: "",
         studentGrade: "",
+        studentYear: "",
         groupId: qr.preset.groupId ?? "",
         amount: qr.preset.amount ?? "",
         label: qr.preset.label ?? "",
@@ -252,6 +354,7 @@ export default function QRManagementPage() {
         studentName: editForm.studentName,
         studentClass: editForm.studentClass,
         studentGrade: editForm.studentGrade,
+        studentYear: editForm.studentYear,
         isActive: editForm.isActive,
       };
     } else {
@@ -320,7 +423,7 @@ export default function QRManagementPage() {
       { header: "ID", key: "id", width: 28 },
       { header: "Type", key: "type", width: 12 },
       { header: "Active", key: "active", width: 10 },
-      { header: "Created At", key: "createdAt", width: 24 },
+      { header: "Year", key: "year", width: 10 },
       { header: "Name/Group", key: "who", width: 26 },
       { header: "Class", key: "className", width: 10 },
       { header: "Grade", key: "gradeName", width: 10 },
@@ -333,7 +436,7 @@ export default function QRManagementPage() {
         id: q.id,
         type: q.type,
         active: q.isActive ? "Yes" : "No",
-        createdAt: new Date(q.createdAt).toLocaleString(),
+        year: q.identity?.year ?? "",
         who:
           q.type === "IDENTITY" && q.identity
             ? q.identity.name
@@ -439,34 +542,63 @@ export default function QRManagementPage() {
         console.warn("Could not add logo to PDF:", error);
       }
 
-      // Caption
+      // Caption (always English, so Helvetica is fine)
       const caption = getCaption(q) || "";
       doc.setFont("helvetica", "bold");
       doc.setFontSize(titleFontSize);
       doc.text(caption, startX + cardW / 2, startY + 28, { align: "center" });
 
+      let metaExists = false; // 👈 track whether we printed a meta line
+
       // (Optional) secondary meta line (for identity, show Class/Grade)
-      let meta = "";
       if (q.type === "IDENTITY" && q.identity) {
         const cls = q.identity.className || "-";
         const grd = q.identity.gradeName || "-";
-        meta = `Class ${cls} • Grade ${grd}`;
+
+        const metaClass = `Class ${cls}`;
+        const metaGrade = `• Grade ${grd}`;
+
+        const baseY = startY + 44; // single line Y position
+
+        // 1. Render className part (Hebrew font)
+        doc.setFont("NotoSansHebrew-Regular", "normal");
+        doc.setFontSize(metaFontSize);
+        const classWidth = doc.getTextWidth(metaClass);
+        const startXClass = startX + cardW / 2 - classWidth / 2; // we'll recalc below
+
+        // 2. Measure full line width (class + grade)
+        doc.setFont("helvetica", "normal");
+        const gradeWidth = doc.getTextWidth(metaGrade);
+        const fullWidth = classWidth + gradeWidth + 4; // +4pt spacing buffer
+
+        // 3. Compute starting X so it's centered
+        const startXLine = startX + cardW / 2 - fullWidth / 2;
+
+        // 4. Draw class (Hebrew font)
+        doc.setFont("NotoSansHebrew-Regular", "normal");
+        doc.text(metaClass, startXLine, baseY);
+
+        // 5. Draw grade (Helvetica) right after
+        doc.setFont("helvetica", "normal");
+        doc.text(metaGrade, startXLine + classWidth + 4, baseY);
+
+        metaExists = true;
       } else if (q.type === "PRESET" && q.preset) {
         const amt = q.preset.amount ? `$${q.preset.amount}` : "";
-        meta = [q.preset.label, amt].filter(Boolean).join(" • ");
-      }
-      if (meta) {
-        doc.setFont("helvetica", "normal");
-        doc.setFontSize(metaFontSize);
-        doc.text(meta, startX + cardW / 2, startY + 44, { align: "center" });
+        const meta = [q.preset.label, amt].filter(Boolean).join(" • ");
+        if (meta) {
+          doc.setFont("helvetica", "normal");
+          doc.setFontSize(metaFontSize);
+          doc.text(meta, startX + cardW / 2, startY + 44, { align: "center" });
+          metaExists = true; // 👈 meta printed
+        }
       }
 
       // ===== move QR down so it never overlaps text =====
-      const topAfterTextY = meta ? startY + 44 : startY + 28;
-      const qrTopPadding = 10; // extra space under text
+      const topAfterTextY = metaExists ? startY + 38 : startY + 18; // notice: IDENTITY prints 2 lines
+      const qrTopPadding = 10;
       const imgX = startX + (cardW - qrSize) / 2;
       const imgY = topAfterTextY + qrTopPadding;
-
       // draw QR (same as before)
       try {
         const dataUrl = await fetchImageAsDataURL(toQrImgUrl(q.storagePath));
@@ -482,7 +614,7 @@ export default function QRManagementPage() {
 
       // Add "BAIS SHAINDEL CHESSED" text at the bottom of the QR code
       const chessedText = "BAIS SHAINDEL CHESSED";
-      const chessedY = imgY + qrSize + 16; // 16pt space below QR code
+      const chessedY = imgY + qrSize + 20; // 16pt space below QR code
       doc.setFont("helvetica", "bold");
       doc.setFontSize(10);
       doc.text(chessedText, startX + cardW / 2, chessedY, { align: "center" });
@@ -503,95 +635,162 @@ export default function QRManagementPage() {
 
   return (
     <div className="min-h-screen p-8">
-      <Card className="mx-auto max-w-6xl">
-        <CardHeader className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          {/* <CardTitle>QR Code Management</CardTitle> */}
+      <Card className="mx-auto max-w-full">
+        <CardHeader className="flex flex-col lg:flex-row lg:justify-between lg:items-start gap-4">
+          {/* ✨ Left Half: Filter Controls */}
+          <div className="flex flex-col gap-3">
+            {/* First row of filters */}
+            <div className="flex flex-col sm:flex-row gap-3">
+              {/* Filter: Type */}
+              <Select
+                value={filterType}
+                onValueChange={(v: "ALL" | "IDENTITY" | "PRESET") =>
+                  setFilterType(v)
+                }
+              >
+                <SelectTrigger className="w-40">
+                  <SelectValue placeholder="Type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ALL">All Types</SelectItem>
+                  <SelectItem value="IDENTITY">Identity</SelectItem>
+                  <SelectItem value="PRESET">Preset</SelectItem>
+                </SelectContent>
+              </Select>
 
-          {/* ✨ Group 1: Filters (aligns to the left) */}
-          <div className="flex flex-col sm:flex-row gap-3">
-            {/* Filter: Type */}
-            <Select
-              value={filterType}
-              onValueChange={(v: "ALL" | "IDENTITY" | "PRESET") =>
-                setFilterType(v)
-              }
-            >
-              <SelectTrigger className="w-40">
-                <SelectValue placeholder="Type" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ALL">All Types</SelectItem>
-                <SelectItem value="IDENTITY">Identity</SelectItem>
-                <SelectItem value="PRESET">Preset</SelectItem>
-              </SelectContent>
-            </Select>
+              {/* Filter: Active */}
+              <Select
+                value={filterActive}
+                onValueChange={(v: "ALL" | "YES" | "NO") => setFilterActive(v)}
+              >
+                <SelectTrigger className="w-40">
+                  <SelectValue placeholder="Active" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ALL">All Statuses</SelectItem>
+                  <SelectItem value="YES">Active</SelectItem>
+                  <SelectItem value="NO">Inactive</SelectItem>
+                </SelectContent>
+              </Select>
 
-            {/* Filter: Active */}
-            <Select
-              value={filterActive}
-              onValueChange={(v: "ALL" | "YES" | "NO") => setFilterActive(v)}
-            >
-              <SelectTrigger className="w-40">
-                <SelectValue placeholder="Active" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ALL">All Statuses</SelectItem>
-                <SelectItem value="YES">Active</SelectItem>
-                <SelectItem value="NO">Inactive</SelectItem>
-              </SelectContent>
-            </Select>
+              {/* Filter: Grade */}
+              <Select value={filterGrade} onValueChange={setFilterGrade}>
+                <SelectTrigger className="w-40">
+                  <SelectValue placeholder="Grade" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ALL">All Grades</SelectItem>
+                  {getUniqueGrades().map((grade) => (
+                    <SelectItem key={grade} value={grade}>
+                      {grade}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Second row of filters */}
+            <div className="flex flex-col sm:flex-row gap-3">
+              {/* Filter: Class */}
+              <Select value={filterClass} onValueChange={setFilterClass}>
+                <SelectTrigger className="w-40">
+                  <SelectValue placeholder="Class" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ALL">All Classes</SelectItem>
+                  {getUniqueClasses().map((className) => (
+                    <SelectItem key={className} value={className}>
+                      {className}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              {/* Filter: Year */}
+              <Select value={filterYear} onValueChange={setFilterYear}>
+                <SelectTrigger className="w-40">
+                  <SelectValue placeholder="Year" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ALL">All Years</SelectItem>
+                  {getUniqueYears().map((year) => (
+                    <SelectItem key={year} value={year}>
+                      {year}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
-          {/* ✨ Group 2: Action Buttons (gets pushed to the right) */}
-          <div className="flex flex-col sm:flex-row gap-3">
-            {/* Export Excel */}
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  onClick={handleExportExcel}
-                  style={{ backgroundColor: "var(--card-colour-1)" }}
-                  className="text-white"
-                >
-                  <Sheet size={16} /> Excel
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Export the selected QR codes to Excel</p>
-              </TooltipContent>
-            </Tooltip>
-            {/* Print Bulk */}
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  onClick={handlePrintSelected}
-                  style={{ backgroundColor: "var(--card-colour-3)" }}
-                  className="text-white hover:text-white"
-                  variant="outline"
-                >
-                  <Printer size={16} /> Bulk
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Print the selected QR codes as PDF</p>
-              </TooltipContent>
-            </Tooltip>
+          {/* ✨ Right Half: Search Bar + Action Buttons */}
+          <div className="flex flex-col gap-3 items-stretch lg:items-end w-full lg:w-auto">
+            {/* Search Bar */}
+            <div className="relative w-full lg:w-80">
+              <Search
+                className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"
+                size={16}
+              />
+              <Input
+                placeholder="Search QR codes..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-10 w-full"
+              />
+            </div>
 
-            {/* Delete Selected */}
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  onClick={handleBulkDelete}
-                  style={{ backgroundColor: "var(--card-colour-4)" }}
-                  className="text-white"
-                  variant="destructive"
-                >
-                  <Trash size={16} /> Selected
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Delete the selected QR codes permanently</p>
-              </TooltipContent>
-            </Tooltip>
+            {/* Action Buttons */}
+            <div className="flex flex-col sm:flex-row gap-3">
+              {/* Export Excel */}
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    onClick={handleExportExcel}
+                    style={{ backgroundColor: "var(--card-colour-1)" }}
+                    className="text-white"
+                  >
+                    <Sheet size={16} /> Excel
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Export the selected QR codes to Excel</p>
+                </TooltipContent>
+              </Tooltip>
+
+              {/* Print Bulk */}
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    onClick={handlePrintSelected}
+                    style={{ backgroundColor: "var(--card-colour-3)" }}
+                    className="text-white hover:text-white"
+                    variant="outline"
+                  >
+                    <Printer size={16} /> Print
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Print the selected QR codes as PDF</p>
+                </TooltipContent>
+              </Tooltip>
+
+              {/* Delete Selected */}
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    onClick={handleBulkDelete}
+                    style={{ backgroundColor: "var(--card-colour-4)" }}
+                    className="text-white"
+                    variant="destructive"
+                  >
+                    <Trash size={16} /> Delete
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Delete the selected QR codes permanently</p>
+                </TooltipContent>
+              </Tooltip>
+            </div>
           </div>
         </CardHeader>
 
@@ -624,7 +823,7 @@ export default function QRManagementPage() {
                   <TableHead>Image</TableHead>
                   <TableHead>Caption</TableHead>
                   <TableHead>Active</TableHead>
-                  <TableHead>Created At</TableHead>
+                  <TableHead>Year</TableHead>
                   <TableHead>Donor/Group</TableHead>
                   <TableHead>Amount/Label</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
@@ -668,7 +867,7 @@ export default function QRManagementPage() {
                       <TableCell>{q.isActive ? "Yes" : "No"}</TableCell>
 
                       <TableCell>
-                        {new Date(q.createdAt).toLocaleString()}
+                        {(q.type === "IDENTITY" && q.identity?.year) || "-"}
                       </TableCell>
 
                       <TableCell>
@@ -803,6 +1002,19 @@ export default function QRManagementPage() {
                         setEditForm({
                           ...editForm,
                           studentGrade: e.target.value,
+                        })
+                      }
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-studentYear">Year</Label>
+                    <Input
+                      id="edit-studentYear"
+                      value={editForm.studentYear}
+                      onChange={(e) =>
+                        setEditForm({
+                          ...editForm,
+                          studentYear: e.target.value,
                         })
                       }
                     />

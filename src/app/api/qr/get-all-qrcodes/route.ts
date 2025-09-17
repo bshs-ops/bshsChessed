@@ -16,7 +16,13 @@ export async function GET() {
     orderBy: { createdAt: "desc" },
     include: {
       donor: {
-        select: { id: true, name: true, className: true, gradeName: true },
+        select: {
+          id: true,
+          name: true,
+          className: true,
+          gradeName: true,
+          year: true,
+        },
       },
       presetGroup: {
         select: { id: true, name: true },
@@ -46,6 +52,7 @@ export async function GET() {
               name: q.donor.name,
               className: q.donor.className,
               gradeName: q.donor.gradeName,
+              year: q.donor.year,
             }
           : null,
 

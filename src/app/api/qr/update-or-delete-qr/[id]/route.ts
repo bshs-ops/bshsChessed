@@ -41,6 +41,7 @@ export async function PATCH(
             name: body.studentName,
             className: body.studentClass,
             gradeName: body.studentGrade,
+            year: body.studentYear,
           },
         }),
       ]);

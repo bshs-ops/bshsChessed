@@ -33,6 +33,7 @@ export default function GenerateQRPage() {
   const [studentName, setStudentName] = useState("");
   const [studentClass, setStudentClass] = useState("");
   const [studentGrade, setStudentGrade] = useState("");
+  const [studentYear, setStudentYear] = useState("");
   const [selectedGroupId, setSelectedGroupId] = useState("");
   const [presetAmount, setPresetAmount] = useState("");
   const [presetLabel, setPresetLabel] = useState("");
@@ -46,6 +47,17 @@ export default function GenerateQRPage() {
   useEffect(() => {
     setTitle("Generate QR Codes");
   }, [setTitle]);
+
+  // Generate available years (2025 to current year)
+  const getAvailableYears = () => {
+    const currentYear = new Date().getFullYear();
+    const startYear = 2025;
+    const years = [];
+    for (let year = startYear; year <= currentYear; year++) {
+      years.push(year.toString());
+    }
+    return years;
+  };
 
   // Fetch PRESET groups
   useEffect(() => {
@@ -66,7 +78,7 @@ export default function GenerateQRPage() {
   const handleGenerate = async () => {
     if (
       qrType === "IDENTITY" &&
-      (!studentName || !studentClass || !studentGrade)
+      (!studentName || !studentClass || !studentGrade || !studentYear)
     ) {
       toast.error("Please fill all fields for IDENTITY QR");
       return;
@@ -80,7 +92,13 @@ export default function GenerateQRPage() {
       setLoading(true);
       const payload =
         qrType === "IDENTITY"
-          ? { type: "IDENTITY", studentName, studentClass, studentGrade }
+          ? {
+              type: "IDENTITY",
+              studentName,
+              studentClass,
+              studentGrade,
+              studentYear,
+            }
           : {
               type: "PRESET",
               groupId: selectedGroupId,
@@ -130,10 +148,13 @@ export default function GenerateQRPage() {
       // 2. Validate headers using the map's keys
       if (
         type === "IDENTITY" &&
-        (!headerMap["Name"] || !headerMap["Class"] || !headerMap["Grade"])
+        (!headerMap["Name"] ||
+          !headerMap["Class"] ||
+          !headerMap["Grade"] ||
+          !headerMap["Year"])
       ) {
         toast.error(
-          "Invalid Identity Excel. Headers must include 'Name', 'Class', and 'Grade'."
+          "Invalid Identity Excel. Headers must include 'Name', 'Class', 'Grade', and 'Year'."
         );
         setLoading(false);
         return;
@@ -167,11 +188,13 @@ export default function GenerateQRPage() {
               row.getCell(headerMap["Class"]).value?.toString() || "",
             studentGrade:
               row.getCell(headerMap["Grade"]).value?.toString() || "",
+            studentYear: row.getCell(headerMap["Year"]).value?.toString() || "",
           };
           if (
             payload.studentName &&
             payload.studentClass &&
-            payload.studentGrade
+            payload.studentGrade &&
+            payload.studentYear
           ) {
             await axios.post("/api/qr/generate-qr", payload);
             successCount++;
@@ -282,7 +305,7 @@ export default function GenerateQRPage() {
                       placeholder="e.g., John Doe"
                     />
                   </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="studentClass">Class</Label>
                       <Input
@@ -306,6 +329,24 @@ export default function GenerateQRPage() {
                           <SelectItem value="10">Grade 10</SelectItem>
                           <SelectItem value="11">Grade 11</SelectItem>
                           <SelectItem value="12">Grade 12</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="studentYear">Year</Label>
+                      <Select
+                        value={studentYear}
+                        onValueChange={(v) => setStudentYear(v)}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select Year" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {getAvailableYears().map((year) => (
+                            <SelectItem key={year} value={year}>
+                              {year}
+                            </SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                     </div>

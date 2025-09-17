@@ -38,17 +38,19 @@ model Donor {
   gradeName      String
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
+  year           String?
   donations      Donation[]
   participations Participation[]
   qrCode         QRCode?         @relation("DonorIdentityQR")
 
   @@index([className])
   @@index([gradeName])
+  @@index([year])
 }
 
 /// ===== QR Codes =====
-///    - IDENTITY: linked to a Donor
-///    - PRESET:   linked to (group + amount) so scanning applies that preset
+/// - IDENTITY: linked to a Donor
+/// - PRESET:   linked to (group + amount) so scanning applies that preset
 model QRCode {
   id            String   @id @default(cuid())
   value         String   @unique
@@ -82,7 +84,7 @@ model Donation {
 }
 
 /// ===== Budgets =====
-///    - GROUP   ties to a specific Group.
+/// - GROUP   ties to a specific Group.
 model Budget {
   id        String   @id @default(cuid())
   amount    Decimal  @db.Decimal(12, 2)
@@ -107,7 +109,7 @@ model Expense {
 }
 
 /// ===== Sales (per group) =====
-///    Tracks fundraisers: cost vs revenue -> profit in queries.
+/// Tracks fundraisers: cost vs revenue -> profit in queries.
 model Sale {
   id            String        @id @default(cuid())
   groupId       String

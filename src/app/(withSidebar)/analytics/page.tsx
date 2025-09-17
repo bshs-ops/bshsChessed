@@ -56,6 +56,23 @@ type ClassDonationStat = {
   donorCount: number;
 };
 
+type FundBreakdown = {
+  total: number;
+  breakdown: Record<string, Record<string, number>>;
+  quartersCount?: number;
+};
+
+type VolunteerBreakdown = {
+  breakdown: Record<string, Record<string, number>>;
+};
+
+type FundBreakdownData = {
+  shirasSara: FundBreakdown;
+  shirasSaraSupporter: FundBreakdown;
+  tiferesRochel: FundBreakdown;
+  levShulamis: VolunteerBreakdown;
+};
+
 export default function AnalyticsPage() {
   const { setTitle } = usePageHeader();
 
@@ -71,6 +88,8 @@ export default function AnalyticsPage() {
     useState<GroupDonationStat | null>(null);
   const [classDonationStat, setClassDonationStat] =
     useState<ClassDonationStat | null>(null);
+  const [fundBreakdownData, setFundBreakdownData] =
+    useState<FundBreakdownData | null>(null);
 
   // Set page title
   useEffect(() => {
@@ -83,6 +102,7 @@ export default function AnalyticsPage() {
     fetchTopGroups();
     fetchGroups();
     fetchGrades();
+    fetchFundBreakdown();
   }, []);
 
   // Fetch data when selections change
@@ -165,11 +185,75 @@ export default function AnalyticsPage() {
     }
   };
 
+  const fetchFundBreakdown = async () => {
+    try {
+      const res = await axios.get<FundBreakdownData>(
+        "/api/analytics/fund-breakdown"
+      );
+      setFundBreakdownData(res.data);
+    } catch (error) {
+      toast.error("Failed to fetch fund breakdown");
+      console.error("Error fetching fund breakdown:", error);
+    }
+  };
+
   // Handle selection changes
   const handleGradeChange = (value: string) => {
     setSelectedGrade(value);
     setSelectedClass(""); // Reset class when grade changes
     setClassDonationStat(null); // Reset class donation stats
+  };
+
+  // Helper component to render breakdown data
+  const renderBreakdown = (
+    breakdown: Record<string, Record<string, number>>,
+    isVolunteer = false
+  ) => {
+    const grades = ["9", "10", "11", "12"];
+    const classes = ["A", "B", "C", "D", "E", "F"];
+
+    return (
+      <div className="space-y-6">
+        {grades.map((grade) => (
+          <div key={grade} className="space-y-3">
+            {/* Grade Header */}
+            <h4 className="font-semibold text-lg text-gray-700 border-b pb-2">
+              Grade {grade}
+            </h4>
+
+            {/* Class Cards Grid */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+              {classes.map((className) => {
+                const value = breakdown[grade]?.[className] || 0;
+
+                return (
+                  <div
+                    key={`${grade}${className}`}
+                    className="border-2 border-gray-200 rounded-lg p-3 text-center bg-white hover:bg-gray-50 transition-colors"
+                  >
+                    <div className="font-medium text-gray-600 text-sm mb-1">
+                      Class {className}
+                    </div>
+                    <div className="font-bold text-lg">
+                      {isVolunteer
+                        ? value
+                        : value > 0
+                        ? `$${value.toLocaleString()}`
+                        : "$0"}
+                    </div>
+                    {isVolunteer && (
+                      <div className="text-xs text-gray-500">
+                        {value === 1 ? "girl" : "girls"}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+    );
   };
 
   return (
@@ -282,124 +366,74 @@ export default function AnalyticsPage() {
         </div>
       </section>
 
-      {/* Filter Section */}
+      {/* Fund Breakdown Section */}
       <section>
-        <h2 className="text-2xl font-semibold mb-3">Donation Breakdown</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Group Filter Card */}
-          <Card className="shadow-md overflow-hidden py-0">
-            <CardHeader className="bg-gradient-to-r from-amber-50 to-amber-100 rounded-t-lg p-4">
-              <CardTitle className="text-lg">Group Donations</CardTitle>
-              <CardDescription>
-                Total money collected for selected group
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="p-4">
-              <div className="space-y-4">
-                <div>
-                  <Label htmlFor="group-select">Select Group</Label>
-                  <Select
-                    value={selectedGroup}
-                    onValueChange={setSelectedGroup}
-                  >
-                    <SelectTrigger id="group-select">
-                      <SelectValue placeholder="Select a group" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {groups.map((group) => (
-                        <SelectItem key={group.id} value={group.id}>
-                          {group.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+        <h2 className="text-2xl font-semibold mb-3">Fund Breakdown</h2>
+        {fundBreakdownData ? (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Shiras Sara Card */}
+            <Card className="shadow-md overflow-hidden py-0">
+              <CardHeader className="bg-gradient-to-r from-purple-100 to-pink-100 rounded-t-lg p-4">
+                <CardTitle className="text-lg">Shiras Sara</CardTitle>
+                <CardDescription>
+                  Total: ${fundBreakdownData.shirasSara.total.toLocaleString()}
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="p-4 max-h-[700px] overflow-y-auto">
+                {renderBreakdown(fundBreakdownData.shirasSara.breakdown)}
+              </CardContent>
+            </Card>
 
-                {selectedGroup && groupDonationStat && (
-                  <div className="mt-4 rounded-lg bg-amber-50 p-4 text-center">
-                    <div className="text-gray-600 mb-1">Total Donations</div>
-                    <div className="text-3xl font-bold text-amber-600">
-                      ${groupDonationStat.totalAmount.toLocaleString()}
-                    </div>
-                  </div>
+            {/* Shiras Sara Supporter Card */}
+            <Card className="shadow-md overflow-hidden py-0">
+              <CardHeader className="bg-gradient-to-r from-purple-100 to-indigo-100 rounded-t-lg p-4">
+                <CardTitle className="text-lg">Shiras Sara Supporter</CardTitle>
+                <CardDescription>
+                  Total: $
+                  {fundBreakdownData.shirasSaraSupporter.total.toLocaleString()}
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="p-4 max-h-[700px] overflow-y-auto">
+                {renderBreakdown(
+                  fundBreakdownData.shirasSaraSupporter.breakdown
                 )}
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
 
-          {/* Grade and Class Filter Card */}
-          <Card className="shadow-md overflow-hidden py-0">
-            <CardHeader className="bg-gradient-to-r from-blue-50 to-blue-100 rounded-t-lg p-4">
-              <CardTitle className="text-lg">Class Donations</CardTitle>
-              <CardDescription>
-                Donation statistics by grade and class
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="p-4">
-              <div className="space-y-4">
-                <div>
-                  <Label htmlFor="grade-select">Select Grade</Label>
-                  <Select
-                    value={selectedGrade}
-                    onValueChange={handleGradeChange}
-                  >
-                    <SelectTrigger id="grade-select">
-                      <SelectValue placeholder="Select a grade" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {grades.map((grade) => (
-                        <SelectItem key={grade.name} value={grade.name}>
-                          {grade.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+            {/* Tiferes Rochel Card */}
+            <Card className="shadow-md overflow-hidden py-0">
+              <CardHeader className="bg-gradient-to-r from-green-100 to-emerald-100 rounded-t-lg p-4">
+                <CardTitle className="text-lg">Tiferes Rochel</CardTitle>
+                <CardDescription>
+                  Total: $
+                  {fundBreakdownData.tiferesRochel.total.toLocaleString()} •
+                  Quarters collected:{" "}
+                  {fundBreakdownData.tiferesRochel.quartersCount || 0}
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="p-4 max-h-[700px] overflow-y-auto">
+                {renderBreakdown(fundBreakdownData.tiferesRochel.breakdown)}
+              </CardContent>
+            </Card>
 
-                {selectedGrade && (
-                  <div>
-                    <Label htmlFor="class-select">Select Class</Label>
-                    <Select
-                      value={selectedClass}
-                      onValueChange={setSelectedClass}
-                      disabled={!selectedGrade}
-                    >
-                      <SelectTrigger id="class-select">
-                        <SelectValue placeholder="Select a class" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {grades
-                          .find((g) => g.name === selectedGrade)
-                          ?.classes.map((className) => (
-                            <SelectItem key={className} value={className}>
-                              {className}
-                            </SelectItem>
-                          ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
-
-                {selectedGrade && selectedClass && classDonationStat && (
-                  <div className="mt-4 grid grid-cols-2 gap-4">
-                    <div className="rounded-lg bg-blue-50 p-4 text-center">
-                      <div className="text-gray-600 mb-1">Total Donations</div>
-                      <div className="text-2xl font-bold text-blue-600">
-                        ${classDonationStat.totalAmount.toLocaleString()}
-                      </div>
-                    </div>
-                    <div className="rounded-lg bg-blue-50 p-4 text-center">
-                      <div className="text-gray-600 mb-1">Students Donated</div>
-                      <div className="text-2xl font-bold text-blue-600">
-                        {classDonationStat.donorCount}
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+            {/* Lev Shulamis Card */}
+            <Card className="shadow-md overflow-hidden py-0">
+              <CardHeader className="bg-gradient-to-r from-orange-100 to-yellow-100 rounded-t-lg p-4">
+                <CardTitle className="text-lg">Lev Shulamis</CardTitle>
+                <CardDescription>
+                  Volunteer participation this month
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="p-4 max-h-[700px] overflow-y-auto">
+                {renderBreakdown(fundBreakdownData.levShulamis.breakdown, true)}
+              </CardContent>
+            </Card>
+          </div>
+        ) : (
+          <div className="text-center text-gray-500 py-8">
+            Loading fund breakdown data...
+          </div>
+        )}
       </section>
     </div>
   );

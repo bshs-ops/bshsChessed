@@ -25,6 +25,21 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Check if participation already exists
+    const existingParticipation = await prisma.participation.findFirst({
+      where: {
+        donorId,
+        groupId,
+      },
+    });
+
+    if (existingParticipation) {
+      return NextResponse.json(
+        { error: "This volunteer is already part of the selected group" },
+        { status: 409 }
+      );
+    }
+
     // Create participation record
     const participation = await prisma.participation.create({
       data: {

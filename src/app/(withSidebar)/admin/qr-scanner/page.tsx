@@ -62,6 +62,8 @@ export default function ScannerPage() {
   const [selectedGroupId, setSelectedGroupId] = useState("");
   const [presetAmount, setPresetAmount] = useState("");
   const [presetGroupId, setPresetGroupId] = useState("");
+  const [customAmount, setCustomAmount] = useState("");
+  const [selectedPresetValue, setSelectedPresetValue] = useState("");
   const [lastPresetScan, setLastPresetScan] = useState<string | null>(null);
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [pendingDonation, setPendingDonation] = useState<{
@@ -74,6 +76,9 @@ export default function ScannerPage() {
   // Physical scanner states
   const [physicalPresetAmount, setPhysicalPresetAmount] = useState("");
   const [physicalPresetGroupId, setPhysicalPresetGroupId] = useState("");
+  const [physicalCustomAmount, setPhysicalCustomAmount] = useState("");
+  const [physicalSelectedPresetValue, setPhysicalSelectedPresetValue] =
+    useState("");
   const [physicalScannedIdentity, setPhysicalScannedIdentity] = useState<{
     token: string;
     donor: Donor | null;
@@ -109,6 +114,85 @@ export default function ScannerPage() {
     fetchGroups();
   }, [setTitle]);
 
+  // Helper function to get preset amounts for a group
+  const getPresetAmounts = (groupName: string): string[] => {
+    // Normalize the group name for comparison
+    const normalizedName = groupName.toLowerCase().replace(/[_\s-]/g, "");
+
+    switch (normalizedName) {
+      case "tiferesrochel":
+        return ["0.25", "2", "3", "4", "6", "8", "other"];
+      case "shirassara":
+        return ["1", "2", "3", "4", "5", "other"];
+      case "shirassarasupporter":
+        return ["4", "6", "8", "10", "12", "16", "20", "60", "other"];
+      default:
+        return []; // For other groups, we'll show a simple input
+    }
+  };
+
+  // Get the selected group name
+  const selectedGroup = groups.find((g) => g.id === presetGroupId);
+  const selectedGroupName = selectedGroup?.name || "";
+  const presetAmounts = getPresetAmounts(selectedGroupName);
+  const hasPresetAmounts = presetAmounts.length > 0;
+
+  // Handler for preset amount selection
+  const handlePresetAmountChange = (value: string) => {
+    setSelectedPresetValue(value);
+    if (value === "other") {
+      setPresetAmount(""); // Clear preset amount, will use custom amount
+    } else {
+      setPresetAmount(value);
+      setCustomAmount(""); // Clear custom amount when selecting preset
+    }
+  };
+
+  // Handler for custom amount input
+  const handleCustomAmountChange = (value: string) => {
+    setCustomAmount(value);
+    setPresetAmount(value); // Set the actual preset amount to the custom value
+  };
+
+  // Handler for group selection - reset amount selections
+  const handleGroupChange = (groupId: string) => {
+    setPresetGroupId(groupId);
+    setPresetAmount("");
+    setCustomAmount("");
+    setSelectedPresetValue("");
+  };
+
+  // Handlers for physical scanner preset mode
+  const handlePhysicalGroupChange = (groupId: string) => {
+    setPhysicalPresetGroupId(groupId);
+    setPhysicalPresetAmount("");
+    setPhysicalCustomAmount("");
+    setPhysicalSelectedPresetValue("");
+  };
+
+  const handlePhysicalPresetAmountChange = (value: string) => {
+    setPhysicalSelectedPresetValue(value);
+    if (value === "other") {
+      setPhysicalPresetAmount(""); // Clear preset amount, will use custom amount
+    } else {
+      setPhysicalPresetAmount(value);
+      setPhysicalCustomAmount(""); // Clear custom amount when selecting preset
+    }
+  };
+
+  const handlePhysicalCustomAmountChange = (value: string) => {
+    setPhysicalCustomAmount(value);
+    setPhysicalPresetAmount(value); // Set the actual preset amount to the custom value
+  };
+
+  // Get preset amounts for physical scanner
+  const physicalSelectedGroup = groups.find(
+    (g) => g.id === physicalPresetGroupId
+  );
+  const physicalSelectedGroupName = physicalSelectedGroup?.name || "";
+  const physicalPresetAmounts = getPresetAmounts(physicalSelectedGroupName);
+  const physicalHasPresetAmounts = physicalPresetAmounts.length > 0;
+
   // Auto-focus the appropriate input field when changing to physical scanner mode
   useEffect(() => {
     if (mode === "PHYSICAL") {
@@ -127,6 +211,25 @@ export default function ScannerPage() {
     setSelectedGroupId("");
     setIsScanning(false);
     setScannerKey((prev) => prev + 1); // Force new scanner instance
+  };
+
+  // Reset function for preset mode
+  const resetPresetMode = () => {
+    setPresetAmount("");
+    setPresetGroupId("");
+    setCustomAmount("");
+    setSelectedPresetValue("");
+    setLastPresetScan(null);
+  };
+
+  // Reset function for physical scanner mode
+  const resetPhysicalMode = () => {
+    setPhysicalPresetAmount("");
+    setPhysicalPresetGroupId("");
+    setPhysicalCustomAmount("");
+    setPhysicalSelectedPresetValue("");
+    setLastPhysicalScan(null);
+    setPhysicalScanInput("");
   };
 
   // Main scan handler that routes to the appropriate mode handler - only for camera scanning
@@ -560,7 +663,19 @@ export default function ScannerPage() {
       ) : (
         <Tabs
           value={mode}
-          onValueChange={(v) => setMode(v as "NORMAL" | "PRESET" | "PHYSICAL")}
+          onValueChange={(v) => {
+            const newMode = v as "NORMAL" | "PRESET" | "PHYSICAL";
+            setMode(newMode);
+
+            // Reset states when switching modes
+            if (newMode === "NORMAL") {
+              resetNormalMode();
+            } else if (newMode === "PRESET") {
+              resetPresetMode();
+            } else if (newMode === "PHYSICAL") {
+              resetPhysicalMode();
+            }
+          }}
           className="w-full"
         >
           <TabsList className="grid w-full grid-cols-3">
@@ -651,28 +766,19 @@ export default function ScannerPage() {
               <CardHeader>
                 <CardTitle>Preset Scan</CardTitle>
                 <CardDescription>
-                  Set the amount and fund first, then scan multiple student IDs.
+                  Select the fund first, choose the amount (preset values
+                  available for certain funds), then scan multiple student IDs.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="preset-amount">Preset Amount</Label>
-                  <Input
-                    id="preset-amount"
-                    type="number"
-                    placeholder="e.g., 2.00"
-                    value={presetAmount}
-                    onChange={(e) => setPresetAmount(e.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="preset-group">Preset Group / Fund</Label>
+                  <Label htmlFor="preset-group">Group / Fund</Label>
                   <Select
                     value={presetGroupId}
-                    onValueChange={setPresetGroupId}
+                    onValueChange={handleGroupChange}
                   >
                     <SelectTrigger>
-                      <SelectValue placeholder="Select a group" />
+                      <SelectValue placeholder="Select a group first" />
                     </SelectTrigger>
                     <SelectContent>
                       {groups.map((g) => (
@@ -683,6 +789,60 @@ export default function ScannerPage() {
                     </SelectContent>
                   </Select>
                 </div>
+
+                {presetGroupId && (
+                  <>
+                    {hasPresetAmounts ? (
+                      <div className="space-y-2">
+                        <Label htmlFor="preset-amount-select">Amount</Label>
+                        <Select
+                          value={selectedPresetValue}
+                          onValueChange={handlePresetAmountChange}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select an amount" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {presetAmounts.map((amount) => (
+                              <SelectItem key={amount} value={amount}>
+                                {amount === "other"
+                                  ? "Other (Custom Amount)"
+                                  : `$${amount}`}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+
+                        {selectedPresetValue === "other" && (
+                          <div className="space-y-2 mt-2">
+                            <Label htmlFor="custom-amount">Custom Amount</Label>
+                            <Input
+                              id="custom-amount"
+                              type="number"
+                              placeholder="Enter custom amount"
+                              value={customAmount}
+                              onChange={(e) =>
+                                handleCustomAmountChange(e.target.value)
+                              }
+                            />
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        <Label htmlFor="preset-amount">Amount</Label>
+                        <Input
+                          id="preset-amount"
+                          type="number"
+                          placeholder="e.g., 2.00"
+                          value={presetAmount}
+                          onChange={(e) => setPresetAmount(e.target.value)}
+                        />
+                      </div>
+                    )}
+                  </>
+                )}
+
                 <Button
                   onClick={() => setIsScanning(true)}
                   size="lg"
@@ -724,27 +884,13 @@ export default function ScannerPage() {
                   <TabsContent value="PRESET">
                     <div className="space-y-4">
                       <div className="space-y-2">
-                        <Label htmlFor="physical-preset-amount">
-                          Preset Amount
-                        </Label>
-                        <Input
-                          id="physical-preset-amount"
-                          type="number"
-                          placeholder="e.g., 2.00"
-                          value={physicalPresetAmount}
-                          onChange={(e) =>
-                            setPhysicalPresetAmount(e.target.value)
-                          }
-                        />
-                      </div>
-                      <div className="space-y-2">
                         <Label htmlFor="physical-preset-group">Fund</Label>
                         <Select
                           value={physicalPresetGroupId}
-                          onValueChange={setPhysicalPresetGroupId}
+                          onValueChange={handlePhysicalGroupChange}
                         >
                           <SelectTrigger>
-                            <SelectValue placeholder="Select a group" />
+                            <SelectValue placeholder="Select a group first" />
                           </SelectTrigger>
                           <SelectContent>
                             {groups.map((g) => (
@@ -755,26 +901,94 @@ export default function ScannerPage() {
                           </SelectContent>
                         </Select>
                       </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="physical-scan-input">
-                          Scan Student ID (Input Field)
-                        </Label>
-                        <Input
-                          id="physical-scan-input"
-                          ref={physicalInputRef}
-                          placeholder="QR code will be scanned here"
-                          value={physicalScanInput}
-                          onChange={(e) => setPhysicalScanInput(e.target.value)}
-                          onKeyDown={handlePhysicalInputKeyDown}
-                          className="bg-muted/30 border-dashed"
-                          autoComplete="off"
-                        />
-                        <p className="text-sm text-muted-foreground">
-                          Place cursor here and scan student IDs with your
-                          physical scanner. Each scan will automatically record
-                          a donation.
-                        </p>
-                      </div>
+
+                      {physicalPresetGroupId && (
+                        <>
+                          {physicalHasPresetAmounts ? (
+                            <div className="space-y-2">
+                              <Label htmlFor="physical-preset-amount-select">
+                                Amount
+                              </Label>
+                              <Select
+                                value={physicalSelectedPresetValue}
+                                onValueChange={handlePhysicalPresetAmountChange}
+                              >
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Select an amount" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {physicalPresetAmounts.map((amount) => (
+                                    <SelectItem key={amount} value={amount}>
+                                      {amount === "other"
+                                        ? "Other (Custom Amount)"
+                                        : `$${amount}`}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+
+                              {physicalSelectedPresetValue === "other" && (
+                                <div className="space-y-2 mt-2">
+                                  <Label htmlFor="physical-custom-amount">
+                                    Custom Amount
+                                  </Label>
+                                  <Input
+                                    id="physical-custom-amount"
+                                    type="number"
+                                    placeholder="Enter custom amount"
+                                    value={physicalCustomAmount}
+                                    onChange={(e) =>
+                                      handlePhysicalCustomAmountChange(
+                                        e.target.value
+                                      )
+                                    }
+                                  />
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            <div className="space-y-2">
+                              <Label htmlFor="physical-preset-amount">
+                                Amount
+                              </Label>
+                              <Input
+                                id="physical-preset-amount"
+                                type="number"
+                                placeholder="e.g., 2.00"
+                                value={physicalPresetAmount}
+                                onChange={(e) =>
+                                  setPhysicalPresetAmount(e.target.value)
+                                }
+                              />
+                            </div>
+                          )}
+                        </>
+                      )}
+
+                      {physicalPresetAmount && physicalPresetGroupId && (
+                        <div className="space-y-2">
+                          <Label htmlFor="physical-scan-input">
+                            Scan Student ID (Input Field)
+                          </Label>
+                          <Input
+                            id="physical-scan-input"
+                            ref={physicalInputRef}
+                            placeholder="QR code will be scanned here"
+                            value={physicalScanInput}
+                            onChange={(e) =>
+                              setPhysicalScanInput(e.target.value)
+                            }
+                            onKeyDown={handlePhysicalInputKeyDown}
+                            className="bg-muted/30 border-dashed"
+                            autoComplete="off"
+                          />
+                          <p className="text-sm text-muted-foreground">
+                            Place cursor here and scan student IDs with your
+                            physical scanner. Each scan will automatically
+                            record a donation.
+                          </p>
+                        </div>
+                      )}
 
                       {lastPhysicalScan && (
                         <Alert variant="default" className="mt-4">

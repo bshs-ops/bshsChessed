@@ -44,11 +44,27 @@ type Expense = {
   date: string;
   fundingSource?: "BUDGET" | "DONATION" | "EXTERNAL";
 };
+type Donation = {
+  id: string;
+  amount: number;
+  donorId: string;
+  groupId: string;
+  scannedAt: string;
+  donor: {
+    name: string;
+    className: string;
+    gradeName: string;
+  };
+  group: {
+    name: string;
+  };
+};
 
 export default function FinancePage() {
   const [groups, setGroups] = useState<Group[]>([]);
   const [budgets, setBudgets] = useState<Budget[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [donations, setDonations] = useState<Donation[]>([]);
   const [amount, setAmount] = useState("");
   const [groupId, setGroupId] = useState("");
   const [editingBudget, setEditingBudget] = useState<Budget | null>(null);
@@ -69,6 +85,7 @@ export default function FinancePage() {
     fetchGroups();
     fetchBudgets();
     fetchExpenses();
+    fetchDonations();
   }, []);
 
   const fetchGroups = async () => {
@@ -97,6 +114,17 @@ export default function FinancePage() {
       setExpenses(res.data.data);
     } catch {
       toast.error("Failed to fetch expenses");
+    }
+  };
+
+  const fetchDonations = async () => {
+    try {
+      const res = await axios.get<{ data: Donation[] }>("/api/admin/donations");
+      console.log("Donations API response:", res.data);
+      setDonations(res.data.data || []);
+    } catch (error) {
+      console.error("Error fetching donations:", error);
+      toast.error("Failed to fetch donations");
     }
   };
 
@@ -214,6 +242,10 @@ export default function FinancePage() {
   // Simple calculations
   const totalBudget = budgets.reduce((acc, b) => acc + Number(b.amount), 0);
   const totalExpenses = expenses.reduce((acc, e) => acc + Number(e.amount), 0);
+  const totalDonations = donations.reduce(
+    (acc, d) => acc + Number(d.amount),
+    0
+  );
   const balance = totalBudget - totalExpenses;
 
   return (
@@ -224,7 +256,7 @@ export default function FinancePage() {
         className="w-full bg-white rounded-xl shadow-lg border"
       >
         {/* ✨ Redesigned TabsList for a modern underline style */}
-        <TabsList className="w-full grid grid-cols-3 h-auto rounded-t-xl bg-slate-50 p-0 border-b">
+        <TabsList className="w-full grid grid-cols-4 h-auto rounded-t-xl bg-slate-50 p-0 border-b">
           <TabsTrigger
             value="budgets"
             className="text-slate-600 font-medium py-4 rounded-tl-xl data-[state=active]:bg-white data-[state=active]:text-blue-700 data-[state=active]:shadow-none"
@@ -236,6 +268,12 @@ export default function FinancePage() {
             className="text-slate-600 font-medium py-4 data-[state=active]:bg-white data-[state=active]:text-blue-700 data-[state=active]:shadow-none"
           >
             Expenses
+          </TabsTrigger>
+          <TabsTrigger
+            value="donations"
+            className="text-slate-600 font-medium py-4 data-[state=active]:bg-white data-[state=active]:text-blue-700 data-[state=active]:shadow-none"
+          >
+            Donations
           </TabsTrigger>
           <TabsTrigger
             value="calculations"
@@ -474,13 +512,116 @@ export default function FinancePage() {
           </div>
         </TabsContent>
 
+        {/* Donations Tab */}
+        <TabsContent value="donations" className="p-6">
+          <div className="mb-6">
+            <h2 className="text-xl font-semibold text-gray-800 mb-4">
+              Donations Collected
+            </h2>
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium text-slate-600">
+                    Total Donations
+                  </CardTitle>
+                  <div className="h-8 w-8 rounded-full bg-green-100 flex items-center justify-center">
+                    <DollarSign className="h-4 w-4 text-green-600" />
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-3xl font-bold text-green-600">
+                    ${totalDonations.toLocaleString()}
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium text-slate-600">
+                    Number of Donations
+                  </CardTitle>
+                  <div className="h-8 w-8 rounded-full bg-blue-100 flex items-center justify-center">
+                    <Receipt className="h-4 w-4 text-blue-600" />
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-3xl font-bold text-blue-600">
+                    {donations.length}
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium text-slate-600">
+                    Average Donation
+                  </CardTitle>
+                  <div className="h-8 w-8 rounded-full bg-purple-100 flex items-center justify-center">
+                    <Scale className="h-4 w-4 text-purple-600" />
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-3xl font-bold text-purple-600">
+                    $
+                    {donations.length
+                      ? (totalDonations / donations.length).toFixed(2)
+                      : "0.00"}
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+
+          <div>
+            <h3 className="text-lg font-semibold mb-4 text-gray-800">
+              Recent Donations
+            </h3>
+            <div className="rounded-lg overflow-hidden border">
+              {donations.length === 0 ? (
+                <div className="p-6 text-center text-gray-500">
+                  No donations found
+                </div>
+              ) : (
+                <ul className="divide-y divide-gray-200">
+                  {donations.slice(0, 20).map((d) => (
+                    <li
+                      key={d.id}
+                      className="p-4 hover:bg-slate-50 transition-colors"
+                    >
+                      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2">
+                        <div>
+                          <div className="font-medium text-gray-900">
+                            {d.donor.name}
+                          </div>
+                          <div className="text-sm text-gray-500 flex flex-wrap gap-x-4 gap-y-1 mt-1">
+                            <span>
+                              Class: {d.donor.gradeName} - {d.donor.className}
+                            </span>
+                            <span>Group: {d.group.name}</span>
+                            <span>
+                              Date: {new Date(d.scannedAt).toLocaleDateString()}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="text-xl font-bold text-green-600">
+                          +${Number(d.amount).toLocaleString()}
+                        </div>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+        </TabsContent>
+
         {/* Calculations Tab */}
         <TabsContent value="calculations" className="p-6">
           <h2 className="text-xl font-semibold text-gray-800 mb-6">
             Financial Summary
           </h2>
           {/* ✨ Revamped summary cards with icons */}
-          <div className="grid gap-6 md:grid-cols-3">
+          <div className="grid gap-6 md:grid-cols-4">
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium text-slate-600">
@@ -493,6 +634,22 @@ export default function FinancePage() {
               <CardContent>
                 <div className="text-3xl font-bold text-green-600">
                   ${totalBudget.toLocaleString()}
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium text-slate-600">
+                  Total Donations
+                </CardTitle>
+                <div className="h-8 w-8 rounded-full bg-blue-100 flex items-center justify-center">
+                  <DollarSign className="h-4 w-4 text-blue-600" />
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="text-3xl font-bold text-blue-600">
+                  ${totalDonations.toLocaleString()}
                 </div>
               </CardContent>
             </Card>
@@ -516,19 +673,26 @@ export default function FinancePage() {
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium text-slate-600">
-                  Remaining Balance
+                  Net Balance
                 </CardTitle>
-                <div className="h-8 w-8 rounded-full bg-blue-100 flex items-center justify-center">
-                  <Scale className="h-4 w-4 text-blue-600" />
+                <div className="h-8 w-8 rounded-full bg-purple-100 flex items-center justify-center">
+                  <Scale className="h-4 w-4 text-purple-600" />
                 </div>
               </CardHeader>
               <CardContent>
                 <div
                   className={`text-3xl font-bold ${
-                    balance >= 0 ? "text-blue-600" : "text-red-600"
+                    totalDonations + totalBudget - totalExpenses >= 0
+                      ? "text-purple-600"
+                      : "text-red-600"
                   }`}
                 >
-                  ${balance.toLocaleString()}
+                  $
+                  {(
+                    totalDonations +
+                    totalBudget -
+                    totalExpenses
+                  ).toLocaleString()}
                 </div>
               </CardContent>
             </Card>
@@ -544,8 +708,23 @@ export default function FinancePage() {
                 <span className="font-medium">{budgets.length}</span>
               </div>
               <div className="flex items-center justify-between py-2 border-b">
+                <span className="text-gray-600">
+                  Total number of donations:
+                </span>
+                <span className="font-medium">{donations.length}</span>
+              </div>
+              <div className="flex items-center justify-between py-2 border-b">
                 <span className="text-gray-600">Total number of expenses:</span>
                 <span className="font-medium">{expenses.length}</span>
+              </div>
+              <div className="flex items-center justify-between py-2 border-b">
+                <span className="text-gray-600">Average donation amount:</span>
+                <span className="font-medium">
+                  $
+                  {donations.length
+                    ? (totalDonations / donations.length).toFixed(2)
+                    : "0.00"}
+                </span>
               </div>
               <div className="flex items-center justify-between py-2 border-b">
                 <span className="text-gray-600">Average expense amount:</span>
@@ -556,11 +735,19 @@ export default function FinancePage() {
                     : "0.00"}
                 </span>
               </div>
-              <div className="flex items-center justify-between py-2">
+              <div className="flex items-center justify-between py-2 border-b">
                 <span className="text-gray-600">Budget utilization:</span>
                 <span className="font-medium">
                   {totalBudget
                     ? `${Math.round((totalExpenses / totalBudget) * 100)}%`
+                    : "0%"}
+                </span>
+              </div>
+              <div className="flex items-center justify-between py-2">
+                <span className="text-gray-600">Donation vs Budget ratio:</span>
+                <span className="font-medium">
+                  {totalBudget
+                    ? `${Math.round((totalDonations / totalBudget) * 100)}%`
                     : "0%"}
                 </span>
               </div>
