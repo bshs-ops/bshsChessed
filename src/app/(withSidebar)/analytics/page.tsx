@@ -210,7 +210,7 @@ export default function AnalyticsPage() {
     isVolunteer = false
   ) => {
     const grades = ["9", "10", "11", "12"];
-    const classes = ["A", "B", "C", "D", "E", "F"];
+    const classes = ["א", "ב", "ג", "ד", "ה", "ו"];
 
     return (
       <div className="space-y-6">
