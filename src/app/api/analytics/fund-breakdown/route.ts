@@ -1,3 +1,4 @@
+import { Donation, Group, Donor, Participation } from "@prisma/client";
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 
@@ -47,17 +48,20 @@ export async function GET() {
     console.log("Sample donation:", donations[0]);
 
     // Helper function to organize data by grade and class
-    const organizeByGradeAndClass = (data: any[]) => {
+    const organizeByGradeAndClass = (
+      data: (DonationWithRelations | ParticipationWithDonor)[]
+    ) => {
       const result: Record<string, Record<string, number>> = {};
 
-      data.forEach((item: any) => {
+      data.forEach((item) => {
         const grade = item.donor?.gradeName || "Unknown";
         const className = item.donor?.className || "Unknown";
 
         if (!result[grade]) result[grade] = {};
         if (!result[grade][className]) result[grade][className] = 0;
 
-        result[grade][className] += parseFloat(item.amount || 1); // For volunteers, count as 1
+        const amount = "amount" in item ? item.amount : 1;
+        result[grade][className] += parseFloat(amount?.toString() || "1"); // For volunteers, count as 1
       });
 
       return result;
@@ -65,28 +69,28 @@ export async function GET() {
 
     // Calculate Shiras Sara breakdown
     const shirasSaraData = donations.filter(
-      (d: any) =>
+      (d) =>
         d.group?.name &&
         (d.group.name.toUpperCase().includes("SHIRAS_SARA") ||
           d.group.name.toUpperCase().includes("SHIRAS SARA") ||
           d.group.name.toUpperCase() === "SHIRAS_SARA")
     );
     const shirasSaraTotal = shirasSaraData.reduce(
-      (sum: number, d: any) => sum + parseFloat(d.amount),
+      (sum, d) => sum + parseFloat(d.amount.toString()),
       0
     );
     const shirasSaraBreakdown = organizeByGradeAndClass(shirasSaraData);
 
     // Calculate Shiras Sara Supporters breakdown
     const shirasSaraSupportersData = donations.filter(
-      (d: any) =>
+      (d) =>
         d.group?.name &&
         (d.group.name.toUpperCase().includes("SHIRAS_SARA_SUPPORTER") ||
           d.group.name.toUpperCase().includes("SHIRAS SARA SUPPORTER") ||
           d.group.name.toUpperCase().includes("SUPPORTER"))
     );
     const shirasSaraSupportersTotal = shirasSaraSupportersData.reduce(
-      (sum: number, d: any) => sum + parseFloat(d.amount),
+      (sum, d) => sum + parseFloat(d.amount.toString()),
       0
     );
     const shirasSaraSupportersBreakdown = organizeByGradeAndClass(
@@ -95,7 +99,7 @@ export async function GET() {
 
     // Calculate Tiferes Rochel breakdown
     const tiferesRochelData = donations.filter(
-      (d: any) =>
+      (d) =>
         d.group?.name &&
         (d.group.name.toUpperCase().includes("TIFERES_ROCHEL") ||
           d.group.name.toUpperCase().includes("TIFERES ROCHEL") ||
@@ -103,16 +107,16 @@ export async function GET() {
           d.group.name.toUpperCase() === "TIFERES_ROCHEL")
     );
     const tiferesRochelTotal = tiferesRochelData.reduce(
-      (sum: number, d: any) => sum + parseFloat(d.amount),
+      (sum, d) => sum + parseFloat(d.amount.toString()),
       0
     );
     const tiferesRochelBreakdown = organizeByGradeAndClass(tiferesRochelData);
     const quartersCount = tiferesRochelData.filter(
-      (d: any) => parseFloat(d.amount) === 0.25
+      (d) => parseFloat(d.amount.toString()) === 0.25
     ).length;
 
     // Calculate Lev Shulamis volunteer breakdown
-    const levShulamis = volunteerParticipation.filter((p: any) => p.donor);
+    const levShulamis = volunteerParticipation.filter((p) => p.donor);
     const levShulamimBreakdown = organizeByGradeAndClass(levShulamis);
 
     const result = {
@@ -145,3 +149,12 @@ export async function GET() {
     );
   }
 }
+
+type DonationWithRelations = Donation & {
+  group: Group | null;
+  donor: Donor | null;
+};
+
+type ParticipationWithDonor = Participation & {
+  donor: Donor | null;
+};
