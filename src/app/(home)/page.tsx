@@ -148,7 +148,7 @@ export default function HomePage() {
                   {grade.topDonor && (
                     <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-200">
                       <h3 className="font-semibold text-gray-800 mb-2">
-                        🏆 Top Sponsor
+                        🏆 TOP CHESSED MASTER
                       </h3>
                       <div className="text-lg font-medium text-gray-700">
                         {grade.topDonor.name}

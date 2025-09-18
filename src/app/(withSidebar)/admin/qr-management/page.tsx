@@ -8,7 +8,14 @@ import ExcelJS from "exceljs";
 import jsPDF from "jspdf";
 import "../../../../../public/assets/fonts/NotoSansHebrew-Regular-normal.js";
 import { toast } from "sonner";
-import { SquarePen, Trash, Printer, Sheet, Search } from "lucide-react";
+import {
+  SquarePen,
+  Trash,
+  Printer,
+  Sheet,
+  Search,
+  Loader2,
+} from "lucide-react";
 import {
   Tooltip,
   TooltipContent,
@@ -91,6 +98,9 @@ type EditFormState = {
 export default function QRManagementPage() {
   const [qrCodes, setQrCodes] = useState<QRCode[]>([]);
   const [loading, setLoading] = useState(true);
+  // ✨ Add processing state for full-screen loader
+  const [processing, setProcessing] = useState(false);
+  const [processingMessage, setProcessingMessage] = useState("");
 
   // filters
   const [filterType, setFilterType] = useState<"ALL" | "IDENTITY" | "PRESET">(
@@ -293,6 +303,9 @@ export default function QRManagementPage() {
       return;
     }
 
+    setProcessing(true);
+    setProcessingMessage("Deleting QR codes...");
+
     try {
       await Promise.all(
         Array.from(selectedIds).map((id) =>
@@ -304,6 +317,9 @@ export default function QRManagementPage() {
       setSelectedIds(new Set());
     } catch {
       toast.error("Failed to delete selected QR codes.");
+    } finally {
+      setProcessing(false);
+      setProcessingMessage("");
     }
   };
 
@@ -393,6 +409,10 @@ export default function QRManagementPage() {
     ) {
       return;
     }
+
+    setProcessing(true);
+    setProcessingMessage("Deleting QR code...");
+
     try {
       await axios.delete(`/api/qr/update-or-delete-qr/${id}`);
       toast.success("QR Code deleted.");
@@ -400,6 +420,9 @@ export default function QRManagementPage() {
       setQrCodes((prev) => prev.filter((q) => q.id !== id));
     } catch {
       toast.error("Failed to delete QR Code.");
+    } finally {
+      setProcessing(false);
+      setProcessingMessage("");
     }
   };
 
@@ -471,17 +494,60 @@ export default function QRManagementPage() {
     return "";
   };
 
-  // Fetch image as dataURL for jsPDF
-  const fetchImageAsDataURL = async (url: string) => {
+  // Fetch image as dataURL for jsPDF with caching
+  const imageCache = new Map<string, string>();
+
+  const fetchImageAsDataURL = async (url: string): Promise<string> => {
+    if (imageCache.has(url)) {
+      return imageCache.get(url)!;
+    }
+
     const res = await fetch(url);
     const buf = await res.arrayBuffer();
     // png assumed for QR
     const bytes = new Uint8Array(buf);
     const bin = bytes.reduce((acc, b) => acc + String.fromCharCode(b), "");
-    return `data:image/png;base64,${btoa(bin)}`;
+    const dataUrl = `data:image/png;base64,${btoa(bin)}`;
+
+    imageCache.set(url, dataUrl);
+    return dataUrl;
   };
 
-  // Create a PDF of the given rows (grid of cards)
+  // Fetch images in parallel with concurrency limit
+  const fetchImagesInBatches = async (
+    urls: string[],
+    batchSize = 10
+  ): Promise<Map<string, string>> => {
+    const imageMap = new Map<string, string>();
+
+    for (let i = 0; i < urls.length; i += batchSize) {
+      const batch = urls.slice(i, i + batchSize);
+      const promises = batch.map(async (url) => {
+        try {
+          const dataUrl = await fetchImageAsDataURL(url);
+          return { url, dataUrl };
+        } catch (error) {
+          console.warn(`Failed to fetch image: ${url}`, error);
+          return { url, dataUrl: null };
+        }
+      });
+
+      const results = await Promise.all(promises);
+      results.forEach(({ url, dataUrl }) => {
+        if (dataUrl) {
+          imageMap.set(url, dataUrl);
+        }
+      });
+
+      // Update progress
+      const progress = Math.min(i + batchSize, urls.length);
+      setProcessingMessage(`Loading images... (${progress}/${urls.length})`);
+    }
+
+    return imageMap;
+  };
+
+  // Create a PDF of the given rows (grid of cards) with batch processing
   const printQRCodesToPdf = async (rows: QRCode[]) => {
     if (!rows.length) {
       toast.message("Nothing to print", {
@@ -490,137 +556,231 @@ export default function QRManagementPage() {
       return;
     }
 
-    // Letter size in points (jsPDF default units = 'pt')
-    const doc = new jsPDF({ unit: "pt", format: "letter" }); // 612 x 792
-    const pageW = doc.internal.pageSize.getWidth();
-    const pageH = doc.internal.pageSize.getHeight();
+    const MAX_ITEMS_PER_PDF = 200; // Limit to prevent memory issues
 
-    // Card layout: 2 columns x 4 rows per page (8 per page)
-    const cols = 2;
-    const rowsPerPage = 4;
-    const margin = 36; // 0.5 inch
-    const gutter = 24;
+    if (rows.length > MAX_ITEMS_PER_PDF) {
+      const shouldProceed = window.confirm(
+        `You're trying to print ${
+          rows.length
+        } QR codes. This will be split into ${Math.ceil(
+          rows.length / MAX_ITEMS_PER_PDF
+        )} separate PDF files. Continue?`
+      );
+      if (!shouldProceed) return;
+    }
 
-    const cardW = (pageW - margin * 2 - gutter * (cols - 1)) / cols;
-    const cardH =
-      (pageH - margin * 2 - gutter * (rowsPerPage - 1)) / rowsPerPage;
+    setProcessing(true);
+    setProcessingMessage("Preparing QR codes for printing...");
 
-    const qrSize = Math.min(cardW, cardH) * 0.5; // QR image size
-    const titleFontSize = 12;
-    const metaFontSize = 10;
-
-    for (let index = 0; index < rows.length; index++) {
-      const q = rows[index];
-      const col = index % cols;
-      const row = Math.floor((index % (cols * rowsPerPage)) / cols);
-
-      if (index > 0 && index % (cols * rowsPerPage) === 0) {
-        doc.addPage();
+    try {
+      // Split into batches if too many items
+      const batches = [];
+      for (let i = 0; i < rows.length; i += MAX_ITEMS_PER_PDF) {
+        batches.push(rows.slice(i, i + MAX_ITEMS_PER_PDF));
       }
 
-      const startX = margin + col * (cardW + gutter);
-      const startY = margin + row * (cardH + gutter);
+      for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
+        const batch = batches[batchIndex];
+        const batchNumber =
+          batches.length > 1 ? ` (${batchIndex + 1}/${batches.length})` : "";
 
-      // Card border (optional)
-      doc.setDrawColor(200);
-      doc.rect(startX, startY, cardW, cardH);
+        setProcessingMessage(`Generating PDF${batchNumber}...`);
 
-      // Add logo in the top-right corner of the card
-      try {
-        const logoSize = 24; // Small logo size
-        const logoX = startX + cardW - logoSize - 8; // 8pt padding from right edge
-        const logoY = startY + cardH - logoSize - 7; // 7pt padding from top edge
-        doc.addImage(
-          "/assets/logos/logo-qr.png",
-          "PNG",
-          logoX,
-          logoY,
-          logoSize,
-          logoSize
-        );
-      } catch (error) {
-        console.warn("Could not add logo to PDF:", error);
-      }
+        // Pre-fetch all images for this batch
+        const imageUrls = batch.map((q) => toQrImgUrl(q.storagePath));
+        const imageMap = await fetchImagesInBatches(imageUrls);
 
-      // Caption (always English, so Helvetica is fine)
-      const caption = getCaption(q) || "";
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(titleFontSize);
-      doc.text(caption, startX + cardW / 2, startY + 28, { align: "center" });
+        setProcessingMessage(`Creating PDF${batchNumber}...`);
 
-      let metaExists = false; // 👈 track whether we printed a meta line
+        // Letter size in points (jsPDF default units = 'pt')
+        const doc = new jsPDF({ unit: "pt", format: "letter" }); // 612 x 792
+        const pageW = doc.internal.pageSize.getWidth();
+        const pageH = doc.internal.pageSize.getHeight();
 
-      // (Optional) secondary meta line (for identity, show Class/Grade)
-      if (q.type === "IDENTITY" && q.identity) {
-        const cls = q.identity.className || "-";
-        const grd = q.identity.gradeName || "-";
+        // Card layout: 2 columns x 4 rows per page (8 per page)
+        const cols = 2;
+        const rowsPerPage = 4;
+        const margin = 36; // 0.5 inch
+        const gutter = 24;
 
-        const metaClass = `Class ${cls}`;
-        const metaGrade = `• Grade ${grd}`;
+        const cardW = (pageW - margin * 2 - gutter * (cols - 1)) / cols;
+        const cardH =
+          (pageH - margin * 2 - gutter * (rowsPerPage - 1)) / rowsPerPage;
 
-        const baseY = startY + 44; // single line Y position
+        const qrSize = Math.min(cardW, cardH) * 0.5; // QR image size
+        const titleFontSize = 12;
+        const metaFontSize = 10;
 
-        // 1. Render className part (Hebrew font)
-        doc.setFont("NotoSansHebrew-Regular", "normal");
-        doc.setFontSize(metaFontSize);
-        const classWidth = doc.getTextWidth(metaClass);
-        const startXClass = startX + cardW / 2 - classWidth / 2; // we'll recalc below
+        for (let index = 0; index < batch.length; index++) {
+          const q = batch[index];
+          const col = index % cols;
+          const row = Math.floor((index % (cols * rowsPerPage)) / cols);
 
-        // 2. Measure full line width (class + grade)
-        doc.setFont("helvetica", "normal");
-        const gradeWidth = doc.getTextWidth(metaGrade);
-        const fullWidth = classWidth + gradeWidth + 4; // +4pt spacing buffer
+          if (index > 0 && index % (cols * rowsPerPage) === 0) {
+            doc.addPage();
+          }
 
-        // 3. Compute starting X so it's centered
-        const startXLine = startX + cardW / 2 - fullWidth / 2;
+          const startX = margin + col * (cardW + gutter);
+          const startY = margin + row * (cardH + gutter);
 
-        // 4. Draw class (Hebrew font)
-        doc.setFont("NotoSansHebrew-Regular", "normal");
-        doc.text(metaClass, startXLine, baseY);
+          // Card border (optional)
+          doc.setDrawColor(200);
+          doc.rect(startX, startY, cardW, cardH);
 
-        // 5. Draw grade (Helvetica) right after
-        doc.setFont("helvetica", "normal");
-        doc.text(metaGrade, startXLine + classWidth + 4, baseY);
+          // Add logo in the top-right corner of the card
+          try {
+            const logoSize = 24; // Small logo size
+            const logoX = startX + cardW - logoSize - 8; // 8pt padding from right edge
+            const logoY = startY + cardH - logoSize - 7; // 7pt padding from top edge
+            doc.addImage(
+              "/assets/logos/logo-qr.png",
+              "PNG",
+              logoX,
+              logoY,
+              logoSize,
+              logoSize
+            );
+          } catch (error) {
+            console.warn("Could not add logo to PDF:", error);
+          }
 
-        metaExists = true;
-      } else if (q.type === "PRESET" && q.preset) {
-        const amt = q.preset.amount ? `$${q.preset.amount}` : "";
-        const meta = [q.preset.label, amt].filter(Boolean).join(" • ");
-        if (meta) {
-          doc.setFont("helvetica", "normal");
-          doc.setFontSize(metaFontSize);
-          doc.text(meta, startX + cardW / 2, startY + 44, { align: "center" });
-          metaExists = true; // 👈 meta printed
+          // Caption (always English, so Helvetica is fine)
+          const caption = getCaption(q) || "";
+          doc.setFont("helvetica", "bold");
+          doc.setFontSize(titleFontSize);
+          doc.text(caption, startX + cardW / 2, startY + 28, {
+            align: "center",
+          });
+
+          let metaExists = false; // 👈 track whether we printed a meta line
+
+          // (Optional) secondary meta line (for identity, show Class/Grade)
+          if (q.type === "IDENTITY" && q.identity) {
+            const cls = q.identity.className || "-";
+            const grd = q.identity.gradeName || "-";
+
+            const metaClass = `Class ${cls}`;
+            const metaGrade = `• Grade ${grd}`;
+
+            const baseY = startY + 44; // single line Y position
+
+            // 1. Render className part (Hebrew font)
+            doc.setFont("NotoSansHebrew-Regular", "normal");
+            doc.setFontSize(metaFontSize);
+            const classWidth = doc.getTextWidth(metaClass);
+
+            // 2. Measure full line width (class + grade)
+            doc.setFont("helvetica", "normal");
+            const gradeWidth = doc.getTextWidth(metaGrade);
+            const fullWidth = classWidth + gradeWidth + 4; // +4pt spacing buffer
+
+            // 3. Compute starting X so it's centered
+            const startXLine = startX + cardW / 2 - fullWidth / 2;
+
+            // 4. Draw class (Hebrew font)
+            doc.setFont("NotoSansHebrew-Regular", "normal");
+            doc.text(metaClass, startXLine, baseY);
+
+            // 5. Draw grade (Helvetica) right after
+            doc.setFont("helvetica", "normal");
+            doc.text(metaGrade, startXLine + classWidth + 4, baseY);
+
+            metaExists = true;
+          } else if (q.type === "PRESET" && q.preset) {
+            const amt = q.preset.amount ? `$${q.preset.amount}` : "";
+            const meta = [q.preset.label, amt].filter(Boolean).join(" • ");
+            if (meta) {
+              doc.setFont("helvetica", "normal");
+              doc.setFontSize(metaFontSize);
+              doc.text(meta, startX + cardW / 2, startY + 44, {
+                align: "center",
+              });
+              metaExists = true; // 👈 meta printed
+            }
+          }
+
+          // ===== move QR down so it never overlaps text =====
+          const topAfterTextY = metaExists ? startY + 38 : startY + 18; // notice: IDENTITY prints 2 lines
+          const qrTopPadding = 10;
+          const imgX = startX + (cardW - qrSize) / 2;
+          const imgY = topAfterTextY + qrTopPadding;
+
+          // Use pre-fetched image
+          const imageUrl = toQrImgUrl(q.storagePath);
+          const dataUrl = imageMap.get(imageUrl);
+
+          if (dataUrl) {
+            try {
+              doc.addImage(dataUrl, "PNG", imgX, imgY, qrSize, qrSize);
+            } catch (error) {
+              console.warn("Failed to add QR image to PDF:", error);
+              // Fallback: draw placeholder
+              doc.setDrawColor(150);
+              doc.rect(imgX, imgY, qrSize, qrSize);
+              doc.setFontSize(8);
+              doc.text("QR unavailable", imgX + qrSize / 2, imgY + qrSize / 2, {
+                align: "center",
+              });
+            }
+          } else {
+            // Fallback: draw placeholder
+            doc.setDrawColor(150);
+            doc.rect(imgX, imgY, qrSize, qrSize);
+            doc.setFontSize(8);
+            doc.text("QR unavailable", imgX + qrSize / 2, imgY + qrSize / 2, {
+              align: "center",
+            });
+          }
+
+          // Add "BAIS SHAINDEL CHESSED" text at the bottom of the QR code
+          const chessedText = "BAIS SHAINDEL CHESSED";
+          const chessedY = imgY + qrSize + 20; // 20pt space below QR code
+          doc.setFont("helvetica", "bold");
+          doc.setFontSize(10);
+          doc.text(chessedText, startX + cardW / 2, chessedY, {
+            align: "center",
+          });
+
+          // Update progress within batch
+          if (index % 10 === 0 || index === batch.length - 1) {
+            setProcessingMessage(
+              `Creating PDF${batchNumber}... (${index + 1}/${batch.length})`
+            );
+            // Allow UI to update
+            await new Promise((resolve) => setTimeout(resolve, 1));
+          }
+        }
+
+        // Save the PDF
+        const filename =
+          batches.length > 1
+            ? `qr-codes-batch-${batchIndex + 1}.pdf`
+            : "qr-codes.pdf";
+
+        doc.save(filename);
+
+        // Clear image cache between batches to free memory
+        imageCache.clear();
+
+        // Small delay between batches to prevent UI freezing
+        if (batchIndex < batches.length - 1) {
+          await new Promise((resolve) => setTimeout(resolve, 100));
         }
       }
 
-      // ===== move QR down so it never overlaps text =====
-      const topAfterTextY = metaExists ? startY + 38 : startY + 18; // notice: IDENTITY prints 2 lines
-      const qrTopPadding = 10;
-      const imgX = startX + (cardW - qrSize) / 2;
-      const imgY = topAfterTextY + qrTopPadding;
-      // draw QR (same as before)
-      try {
-        const dataUrl = await fetchImageAsDataURL(toQrImgUrl(q.storagePath));
-        doc.addImage(dataUrl, "PNG", imgX, imgY, qrSize, qrSize);
-      } catch {
-        doc.setDrawColor(150);
-        doc.rect(imgX, imgY, qrSize, qrSize);
-        doc.setFontSize(10);
-        doc.text("QR unavailable", imgX + qrSize / 2, imgY + qrSize / 2, {
-          align: "center",
-        });
-      }
-
-      // Add "BAIS SHAINDEL CHESSED" text at the bottom of the QR code
-      const chessedText = "BAIS SHAINDEL CHESSED";
-      const chessedY = imgY + qrSize + 20; // 16pt space below QR code
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(10);
-      doc.text(chessedText, startX + cardW / 2, chessedY, { align: "center" });
+      toast.success(
+        batches.length > 1
+          ? `Generated ${batches.length} PDF files successfully!`
+          : "PDF generated successfully!"
+      );
+    } catch (error) {
+      console.error("Error generating PDF:", error);
+      toast.error("Failed to generate PDF. Please try with fewer QR codes.");
+    } finally {
+      setProcessing(false);
+      setProcessingMessage("");
+      imageCache.clear();
     }
-
-    doc.save("qr-codes.pdf");
   };
 
   // Bulk print button
@@ -1088,6 +1248,19 @@ export default function QRManagementPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* ✨ Full-Screen Processing Loader */}
+      {processing && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-white/90 backdrop-blur-md rounded-lg p-8 flex flex-col items-center gap-4 shadow-xl border border-white/20">
+            <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
+            <p className="text-lg font-medium text-gray-700">
+              {processingMessage || "Processing..."}
+            </p>
+            <p className="text-sm text-gray-500">Please wait...</p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

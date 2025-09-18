@@ -39,7 +39,7 @@ import {
 import { Camera, RefreshCw, Send } from "lucide-react";
 
 // Types matching your Prisma schema
-type Group = { id: string; name: string };
+type Group = { id: string; name: string; type: string };
 type Donor = { id: string; name: string; className: string; gradeName: string };
 
 export default function ScannerPage() {
@@ -112,7 +112,26 @@ export default function ScannerPage() {
       }
     };
     fetchGroups();
-  }, [setTitle]);
+
+    // Add window focus event listener to maintain input focus for physical scanner
+    const handleWindowFocus = () => {
+      if (mode === "PHYSICAL") {
+        setTimeout(() => {
+          if (physicalMode === "PRESET" && physicalInputRef.current) {
+            physicalInputRef.current.focus();
+          } else if (physicalMode === "SEQUENCE" && sequenceInputRef.current) {
+            sequenceInputRef.current.focus();
+          }
+        }, 100);
+      }
+    };
+
+    window.addEventListener("focus", handleWindowFocus);
+
+    return () => {
+      window.removeEventListener("focus", handleWindowFocus);
+    };
+  }, [setTitle, mode, physicalMode]);
 
   // Helper function to get preset amounts for a group
   const getPresetAmounts = (groupName: string): string[] => {
@@ -134,6 +153,7 @@ export default function ScannerPage() {
   // Get the selected group name
   const selectedGroup = groups.find((g) => g.id === presetGroupId);
   const selectedGroupName = selectedGroup?.name || "";
+  const isVolunteerGroup = selectedGroup?.type === "VOLUNTEER";
   const presetAmounts = getPresetAmounts(selectedGroupName);
   const hasPresetAmounts = presetAmounts.length > 0;
 
@@ -160,6 +180,9 @@ export default function ScannerPage() {
     setPresetAmount("");
     setCustomAmount("");
     setSelectedPresetValue("");
+
+    // Clear last scan message when switching groups
+    setLastPresetScan(null);
   };
 
   // Handlers for physical scanner preset mode
@@ -168,6 +191,9 @@ export default function ScannerPage() {
     setPhysicalPresetAmount("");
     setPhysicalCustomAmount("");
     setPhysicalSelectedPresetValue("");
+
+    // Clear last scan message when switching groups
+    setLastPhysicalScan(null);
   };
 
   const handlePhysicalPresetAmountChange = (value: string) => {
@@ -190,6 +216,7 @@ export default function ScannerPage() {
     (g) => g.id === physicalPresetGroupId
   );
   const physicalSelectedGroupName = physicalSelectedGroup?.name || "";
+  const physicalIsVolunteerGroup = physicalSelectedGroup?.type === "VOLUNTEER";
   const physicalPresetAmounts = getPresetAmounts(physicalSelectedGroupName);
   const physicalHasPresetAmounts = physicalPresetAmounts.length > 0;
 
@@ -197,12 +224,46 @@ export default function ScannerPage() {
   useEffect(() => {
     if (mode === "PHYSICAL") {
       if (physicalMode === "PRESET" && physicalInputRef.current) {
+        // Focus when switching to preset mode
         setTimeout(() => physicalInputRef.current?.focus(), 100);
       } else if (physicalMode === "SEQUENCE" && sequenceInputRef.current) {
+        // Focus when switching to sequence mode
         setTimeout(() => sequenceInputRef.current?.focus(), 100);
       }
     }
   }, [mode, physicalMode]);
+
+  // Auto-focus preset input when conditions are met for scanning
+  useEffect(() => {
+    if (
+      mode === "PHYSICAL" &&
+      physicalMode === "PRESET" &&
+      physicalInputRef.current &&
+      ((physicalIsVolunteerGroup && physicalPresetGroupId) ||
+        (physicalPresetAmount && physicalPresetGroupId))
+    ) {
+      // Auto-focus when ready to scan
+      setTimeout(() => physicalInputRef.current?.focus(), 100);
+    }
+  }, [
+    mode,
+    physicalMode,
+    physicalIsVolunteerGroup,
+    physicalPresetGroupId,
+    physicalPresetAmount,
+  ]);
+
+  // Auto-focus sequence input when ready
+  useEffect(() => {
+    if (
+      mode === "PHYSICAL" &&
+      physicalMode === "SEQUENCE" &&
+      sequenceInputRef.current
+    ) {
+      // Auto-focus when in sequence mode
+      setTimeout(() => sequenceInputRef.current?.focus(), 100);
+    }
+  }, [mode, physicalMode, physicalScanStep]);
 
   const resetNormalMode = () => {
     setScannedDonor(null);
@@ -272,24 +333,51 @@ export default function ScannerPage() {
         const selectedGroup = groups.find((g) => g.id === presetGroupId);
         const groupName = selectedGroup?.name || "Unknown Group";
 
-        // Set up confirmation data
-        setPendingDonation({
-          token,
-          donorName,
-          groupName,
-          amount: presetAmount,
-        });
+        // Check if this is a volunteer group
+        if (selectedGroup?.type === "VOLUNTEER") {
+          // For volunteer groups, directly add participation
+          setLoadingMessage("Adding volunteer...");
 
-        setLoadingMessage("Preparing confirmation...");
+          try {
+            await axios.post("/api/admin/volunteer/add-participation", {
+              donorId: res.data.data.id,
+              groupId: presetGroupId,
+            });
 
-        // Add a small delay to show the loading state before showing the dialog
-        // This makes the UX feel more responsive
-        setTimeout(() => {
-          // Show confirmation dialog
-          setShowConfirmation(true);
-          // End loading after dialog appears
-          setProcessingQr(false);
-        }, 500);
+            // Update last scan message for volunteers
+            setLastPresetScan(
+              `Success: ${donorName} added as volunteer to ${groupName}.`
+            );
+            toast.success(`${donorName} added as volunteer!`);
+            setProcessingQr(false);
+          } catch (volunteerError) {
+            const axiosError = volunteerError as AxiosError<{ error: string }>;
+            const errorMessage =
+              axiosError.response?.data?.error || "Failed to add volunteer.";
+            toast.error(errorMessage);
+            setProcessingQr(false);
+          }
+        } else {
+          // For donation groups, continue with existing logic
+          // Set up confirmation data
+          setPendingDonation({
+            token,
+            donorName,
+            groupName,
+            amount: presetAmount,
+          });
+
+          setLoadingMessage("Preparing confirmation...");
+
+          // Add a small delay to show the loading state before showing the dialog
+          // This makes the UX feel more responsive
+          setTimeout(() => {
+            // Show confirmation dialog
+            setShowConfirmation(true);
+            // End loading after dialog appears
+            setProcessingQr(false);
+          }, 500);
+        }
       }
     } catch (error) {
       const axiosError = error as AxiosError<{ error: string }>;
@@ -318,15 +406,23 @@ export default function ScannerPage() {
   const handlePhysicalInputKeyDown = async (
     e: React.KeyboardEvent<HTMLInputElement>
   ) => {
-    if (e.key === "Enter" && physicalScanInput) {
-      const token = physicalScanInput;
+    if (e.key === "Enter" && physicalScanInput.trim()) {
+      e.preventDefault(); // Prevent form submission
+      const token = physicalScanInput.trim();
       setPhysicalScanInput(""); // Clear input field for next scan
 
       // Process the scanned token
       await handlePhysicalPresetScan(token);
 
-      // Re-focus the input field for next scan
-      setTimeout(() => physicalInputRef.current?.focus(), 100);
+      // Ensure input field remains focused for next scan
+      setTimeout(() => {
+        physicalInputRef.current?.focus();
+        // Scroll input into view if needed
+        physicalInputRef.current?.scrollIntoView({
+          behavior: "smooth",
+          block: "center",
+        });
+      }, 50);
     }
   };
 
@@ -334,22 +430,32 @@ export default function ScannerPage() {
   const handleSequenceInputKeyDown = async (
     e: React.KeyboardEvent<HTMLInputElement>
   ) => {
-    if (e.key === "Enter" && sequenceScanInput) {
-      const token = sequenceScanInput;
+    if (e.key === "Enter" && sequenceScanInput.trim()) {
+      e.preventDefault(); // Prevent form submission
+      const token = sequenceScanInput.trim();
       setSequenceScanInput(""); // Clear input field for next scan
 
       // Process the scanned token based on current step
       await handlePhysicalSequenceScan(token);
 
-      // Re-focus the input field for next scan
-      setTimeout(() => sequenceInputRef.current?.focus(), 100);
+      // Ensure input field remains focused for next scan
+      setTimeout(() => {
+        sequenceInputRef.current?.focus();
+        // Scroll input into view if needed
+        sequenceInputRef.current?.scrollIntoView({
+          behavior: "smooth",
+          block: "center",
+        });
+      }, 50);
     }
   };
 
   // Physical Scanner - Preset Mode Handler for continuous scanning with input field
   const handlePhysicalPresetScan = async (token: string) => {
-    if (!token || loading || !physicalPresetAmount || !physicalPresetGroupId)
-      return;
+    if (!token || loading || !physicalPresetGroupId) return;
+
+    // For volunteer groups, don't require amount
+    if (!physicalIsVolunteerGroup && !physicalPresetAmount) return;
 
     // Show subtle processing indication
     setLastPhysicalScan("Processing...");
@@ -365,23 +471,40 @@ export default function ScannerPage() {
       const donor = res.data.data;
       const selectedGroup = groups.find((g) => g.id === physicalPresetGroupId);
 
-      // Record the donation directly
-      await axios.post("/api/admin/scanner/record-donation", {
-        action: "RECORD",
-        token: token,
-        amount: parseFloat(physicalPresetAmount),
-        groupId: physicalPresetGroupId,
-      });
+      if (physicalIsVolunteerGroup) {
+        // Handle volunteer group - add participation
+        await axios.post("/api/admin/volunteer/add-participation", {
+          donorId: donor.id,
+          groupId: physicalPresetGroupId,
+        });
 
-      // Update last scan and show success notification
-      const successMessage = `Success: $${physicalPresetAmount} from ${
-        donor.name
-      } to ${selectedGroup?.name || "Unknown"}.`;
+        // Update success message for volunteers
+        const successMessage = `Success: ${donor.name} added as volunteer to ${
+          selectedGroup?.name || "Unknown"
+        }.`;
+        setLastPhysicalScan(successMessage);
+        toast.success(`${donor.name} added as volunteer!`, {
+          duration: 2000,
+        });
+      } else {
+        // Handle donation group - record donation
+        await axios.post("/api/admin/scanner/record-donation", {
+          action: "RECORD",
+          token: token,
+          amount: parseFloat(physicalPresetAmount),
+          groupId: physicalPresetGroupId,
+        });
 
-      setLastPhysicalScan(successMessage);
-      toast.success(`Donation from ${donor.name} recorded!`, {
-        duration: 2000, // Shorter toast for continuous scanning
-      });
+        // Update last scan and show success notification
+        const successMessage = `Success: $${physicalPresetAmount} from ${
+          donor.name
+        } to ${selectedGroup?.name || "Unknown"}.`;
+
+        setLastPhysicalScan(successMessage);
+        toast.success(`Donation from ${donor.name} recorded!`, {
+          duration: 2000, // Shorter toast for continuous scanning
+        });
+      }
 
       // Play a success sound if available
       try {
@@ -792,53 +915,67 @@ export default function ScannerPage() {
 
                 {presetGroupId && (
                   <>
-                    {hasPresetAmounts ? (
-                      <div className="space-y-2">
-                        <Label htmlFor="preset-amount-select">Amount</Label>
-                        <Select
-                          value={selectedPresetValue}
-                          onValueChange={handlePresetAmountChange}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select an amount" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {presetAmounts.map((amount) => (
-                              <SelectItem key={amount} value={amount}>
-                                {amount === "other"
-                                  ? "Other (Custom Amount)"
-                                  : `$${amount}`}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                    {isVolunteerGroup ? (
+                      <Alert>
+                        <AlertTitle>Volunteer Mode</AlertTitle>
+                        <AlertDescription>
+                          Scan the QR codes of students and they will be added
+                          as volunteers.
+                        </AlertDescription>
+                      </Alert>
+                    ) : (
+                      <>
+                        {hasPresetAmounts ? (
+                          <div className="space-y-2">
+                            <Label htmlFor="preset-amount-select">Amount</Label>
+                            <Select
+                              value={selectedPresetValue}
+                              onValueChange={handlePresetAmountChange}
+                            >
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select an amount" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {presetAmounts.map((amount) => (
+                                  <SelectItem key={amount} value={amount}>
+                                    {amount === "other"
+                                      ? "Other (Custom Amount)"
+                                      : `$${amount}`}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
 
-                        {selectedPresetValue === "other" && (
-                          <div className="space-y-2 mt-2">
-                            <Label htmlFor="custom-amount">Custom Amount</Label>
+                            {selectedPresetValue === "other" && (
+                              <div className="space-y-2 mt-2">
+                                <Label htmlFor="custom-amount">
+                                  Custom Amount
+                                </Label>
+                                <Input
+                                  id="custom-amount"
+                                  type="number"
+                                  placeholder="Enter custom amount"
+                                  value={customAmount}
+                                  onChange={(e) =>
+                                    handleCustomAmountChange(e.target.value)
+                                  }
+                                />
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="space-y-2">
+                            <Label htmlFor="preset-amount">Amount</Label>
                             <Input
-                              id="custom-amount"
+                              id="preset-amount"
                               type="number"
-                              placeholder="Enter custom amount"
-                              value={customAmount}
-                              onChange={(e) =>
-                                handleCustomAmountChange(e.target.value)
-                              }
+                              placeholder="e.g., 2.00"
+                              value={presetAmount}
+                              onChange={(e) => setPresetAmount(e.target.value)}
                             />
                           </div>
                         )}
-                      </div>
-                    ) : (
-                      <div className="space-y-2">
-                        <Label htmlFor="preset-amount">Amount</Label>
-                        <Input
-                          id="preset-amount"
-                          type="number"
-                          placeholder="e.g., 2.00"
-                          value={presetAmount}
-                          onChange={(e) => setPresetAmount(e.target.value)}
-                        />
-                      </div>
+                      </>
                     )}
                   </>
                 )}
@@ -847,7 +984,10 @@ export default function ScannerPage() {
                   onClick={() => setIsScanning(true)}
                   size="lg"
                   className="w-full flex items-center justify-center gap-2"
-                  disabled={!presetAmount || !presetGroupId}
+                  disabled={
+                    !presetGroupId ||
+                    (!isVolunteerGroup && (!presetAmount || !presetGroupId))
+                  }
                 >
                   <Camera /> Start Scanning
                 </Button>
@@ -904,68 +1044,83 @@ export default function ScannerPage() {
 
                       {physicalPresetGroupId && (
                         <>
-                          {physicalHasPresetAmounts ? (
-                            <div className="space-y-2">
-                              <Label htmlFor="physical-preset-amount-select">
-                                Amount
-                              </Label>
-                              <Select
-                                value={physicalSelectedPresetValue}
-                                onValueChange={handlePhysicalPresetAmountChange}
-                              >
-                                <SelectTrigger>
-                                  <SelectValue placeholder="Select an amount" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {physicalPresetAmounts.map((amount) => (
-                                    <SelectItem key={amount} value={amount}>
-                                      {amount === "other"
-                                        ? "Other (Custom Amount)"
-                                        : `$${amount}`}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
+                          {physicalIsVolunteerGroup ? (
+                            <Alert>
+                              <AlertTitle>Volunteer Mode</AlertTitle>
+                              <AlertDescription>
+                                Scan the QR codes of students and they will be
+                                added as volunteers.
+                              </AlertDescription>
+                            </Alert>
+                          ) : (
+                            <>
+                              {physicalHasPresetAmounts ? (
+                                <div className="space-y-2">
+                                  <Label htmlFor="physical-preset-amount-select">
+                                    Amount
+                                  </Label>
+                                  <Select
+                                    value={physicalSelectedPresetValue}
+                                    onValueChange={
+                                      handlePhysicalPresetAmountChange
+                                    }
+                                  >
+                                    <SelectTrigger>
+                                      <SelectValue placeholder="Select an amount" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {physicalPresetAmounts.map((amount) => (
+                                        <SelectItem key={amount} value={amount}>
+                                          {amount === "other"
+                                            ? "Other (Custom Amount)"
+                                            : `$${amount}`}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
 
-                              {physicalSelectedPresetValue === "other" && (
-                                <div className="space-y-2 mt-2">
-                                  <Label htmlFor="physical-custom-amount">
-                                    Custom Amount
+                                  {physicalSelectedPresetValue === "other" && (
+                                    <div className="space-y-2 mt-2">
+                                      <Label htmlFor="physical-custom-amount">
+                                        Custom Amount
+                                      </Label>
+                                      <Input
+                                        id="physical-custom-amount"
+                                        type="number"
+                                        placeholder="Enter custom amount"
+                                        value={physicalCustomAmount}
+                                        onChange={(e) =>
+                                          handlePhysicalCustomAmountChange(
+                                            e.target.value
+                                          )
+                                        }
+                                      />
+                                    </div>
+                                  )}
+                                </div>
+                              ) : (
+                                <div className="space-y-2">
+                                  <Label htmlFor="physical-preset-amount">
+                                    Amount
                                   </Label>
                                   <Input
-                                    id="physical-custom-amount"
+                                    id="physical-preset-amount"
                                     type="number"
-                                    placeholder="Enter custom amount"
-                                    value={physicalCustomAmount}
+                                    placeholder="e.g., 2.00"
+                                    value={physicalPresetAmount}
                                     onChange={(e) =>
-                                      handlePhysicalCustomAmountChange(
-                                        e.target.value
-                                      )
+                                      setPhysicalPresetAmount(e.target.value)
                                     }
                                   />
                                 </div>
                               )}
-                            </div>
-                          ) : (
-                            <div className="space-y-2">
-                              <Label htmlFor="physical-preset-amount">
-                                Amount
-                              </Label>
-                              <Input
-                                id="physical-preset-amount"
-                                type="number"
-                                placeholder="e.g., 2.00"
-                                value={physicalPresetAmount}
-                                onChange={(e) =>
-                                  setPhysicalPresetAmount(e.target.value)
-                                }
-                              />
-                            </div>
+                            </>
                           )}
                         </>
                       )}
 
-                      {physicalPresetAmount && physicalPresetGroupId && (
+                      {((physicalIsVolunteerGroup && physicalPresetGroupId) ||
+                        (physicalPresetAmount && physicalPresetGroupId)) && (
                         <div className="space-y-2">
                           <Label htmlFor="physical-scan-input">
                             Scan Student ID (Input Field)
@@ -979,13 +1134,28 @@ export default function ScannerPage() {
                               setPhysicalScanInput(e.target.value)
                             }
                             onKeyDown={handlePhysicalInputKeyDown}
-                            className="bg-muted/30 border-dashed"
+                            onBlur={() => {
+                              // Re-focus immediately if blurred (for physical scanner)
+                              setTimeout(
+                                () => physicalInputRef.current?.focus(),
+                                10
+                              );
+                            }}
+                            onClick={() => {
+                              // Ensure focus when clicked
+                              physicalInputRef.current?.focus();
+                            }}
+                            className="bg-muted/30 border-dashed font-mono text-center"
                             autoComplete="off"
+                            autoFocus
                           />
                           <p className="text-sm text-muted-foreground">
                             Place cursor here and scan student IDs with your
                             physical scanner. Each scan will automatically
-                            record a donation.
+                            {physicalIsVolunteerGroup
+                              ? " add them as volunteers"
+                              : " record a donation"}
+                            .
                           </p>
                         </div>
                       )}
@@ -1052,12 +1222,24 @@ export default function ScannerPage() {
                           value={sequenceScanInput}
                           onChange={(e) => setSequenceScanInput(e.target.value)}
                           onKeyDown={handleSequenceInputKeyDown}
-                          className={`bg-muted/30 border-dashed ${
+                          onBlur={() => {
+                            // Re-focus immediately if blurred (for physical scanner)
+                            setTimeout(
+                              () => sequenceInputRef.current?.focus(),
+                              10
+                            );
+                          }}
+                          onClick={() => {
+                            // Ensure focus when clicked
+                            sequenceInputRef.current?.focus();
+                          }}
+                          className={`bg-muted/30 border-dashed font-mono text-center ${
                             physicalScanStep === "PRESET"
                               ? "border-primary"
                               : ""
                           }`}
                           autoComplete="off"
+                          autoFocus
                         />
                         <p className="text-sm text-muted-foreground">
                           Place cursor here and scan QR codes in sequence with
