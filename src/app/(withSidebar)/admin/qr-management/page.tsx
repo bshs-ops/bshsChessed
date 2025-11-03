@@ -6,6 +6,8 @@ import Image from "next/image";
 import axios from "axios";
 import ExcelJS from "exceljs";
 import jsPDF from "jspdf";
+import JSZip from "jszip";
+import * as htmlToImage from "html-to-image";
 import "../../../../../public/assets/fonts/NotoSansHebrew-Regular-normal.js";
 import { toast } from "sonner";
 import {
@@ -15,6 +17,9 @@ import {
   Sheet,
   Search,
   Loader2,
+  ChevronDown,
+  FileText,
+  Image as ImageIcon,
 } from "lucide-react";
 import {
   Tooltip,
@@ -37,6 +42,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Dialog,
   DialogContent,
@@ -783,14 +794,203 @@ export default function QRManagementPage() {
     }
   };
 
+  // --- Canvas-based JPEG renderer (robust and CORS-safe) ---
+  const loadImageFromBlobUrl = (blobUrl: string): Promise<HTMLImageElement> =>
+    new Promise((resolve, reject) => {
+      const img = new window.Image();
+      img.onload = () => resolve(img);
+      img.onerror = reject;
+      img.src = blobUrl;
+    });
+
+  const fetchAsImage = async (url: string): Promise<HTMLImageElement> => {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`Failed to fetch image: ${url}`);
+    const blob = await res.blob();
+    const blobUrl = URL.createObjectURL(blob);
+    try {
+      const img = await loadImageFromBlobUrl(blobUrl);
+      return img;
+    } finally {
+      URL.revokeObjectURL(blobUrl);
+    }
+  };
+
+  // Draw a 4x2 inch (landscape) card => 1200 x 600 px at 300 DPI
+  const renderQrCardToJpegBlob = async (q: QRCode): Promise<Blob> => {
+    const WIDTH = 1200;
+    const HEIGHT = 600;
+    const canvas = document.createElement("canvas");
+    canvas.width = WIDTH;
+    canvas.height = HEIGHT;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("Canvas 2D context unavailable");
+
+    // Background
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, WIDTH, HEIGHT);
+
+    // Border
+    ctx.strokeStyle = "#e5e7eb"; // Tailwind slate-200
+    ctx.lineWidth = 2;
+    ctx.strokeRect(8, 8, WIDTH - 16, HEIGHT - 16);
+
+    // Title (name / group)
+    const caption = getCaption(q) || "";
+    ctx.fillStyle = "#000000";
+    ctx.font = "bold 48px Arial";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "top";
+    ctx.fillText(caption, WIDTH / 2, 40);
+
+    // Meta line
+    let metaText = "";
+    if (q.type === "IDENTITY" && q.identity) {
+      const cls = q.identity.className || "-";
+      const grd = q.identity.gradeName || "-";
+      metaText = `Class ${cls} • Grade ${grd}`;
+    } else if (q.type === "PRESET" && q.preset) {
+      const amt = q.preset.amount ? `$${q.preset.amount}` : "";
+      metaText = [q.preset.label, amt].filter(Boolean).join(" • ");
+    }
+    if (metaText) {
+      ctx.fillStyle = "#4b5563"; // slate-600
+      ctx.font = "normal 32px Arial";
+      ctx.fillText(metaText, WIDTH / 2, 100);
+    }
+
+    // Load images
+    const qrImg = await fetchAsImage(toQrImgUrl(q.storagePath));
+    let logoImg: HTMLImageElement | null = null;
+    try {
+      logoImg = await fetchAsImage("/assets/logos/logo-qr.png");
+    } catch {
+      // optional
+    }
+
+    // Draw QR
+    const qrSize = 320; // fits comfortably
+    const qrX = (WIDTH - qrSize) / 2;
+    const qrY = 160;
+    ctx.drawImage(qrImg, qrX, qrY, qrSize, qrSize);
+
+    // Brand line under QR
+    ctx.fillStyle = "#000000";
+    ctx.font = "bold 30px Arial";
+    ctx.fillText("BAIS SHAINDEL CHESSED", WIDTH / 2, qrY + qrSize + 24);
+
+    // Small logo (optional) bottom-right
+    if (logoImg) {
+      const ls = 50;
+      ctx.drawImage(logoImg, WIDTH - ls - 24, HEIGHT - ls - 24, ls, ls);
+    }
+
+    // Export to JPEG
+    const blob: Blob = await new Promise((resolve, reject) => {
+      canvas.toBlob(
+        (b) => (b ? resolve(b) : reject(new Error("JPEG blob failed"))),
+        "image/jpeg",
+        0.95
+      );
+    });
+    return blob;
+  };
+
+  // Generate JPEG images for QR codes
+  const generateJPEGImages = async (rows: QRCode[]) => {
+    if (!rows.length) {
+      toast.message("Nothing to export", {
+        description: "Adjust filters or select rows.",
+      });
+      return;
+    }
+
+    setProcessing(true);
+    setProcessingMessage("Generating JPEG images...");
+
+    try {
+      const images: { name: string; blob: Blob }[] = [];
+
+      for (let i = 0; i < rows.length; i++) {
+        const q = rows[i];
+        setProcessingMessage(
+          `Generating JPEG image ${i + 1}/${rows.length}...`
+        );
+
+        try {
+          // Render with canvas and get JPEG blob
+          const blob = await renderQrCardToJpegBlob(q);
+
+          // Generate filename
+          const caption = getCaption(q) || "QR";
+          const sanitizedCaption = caption
+            .replace(/[^a-zA-Z0-9\s]/g, "")
+            .replace(/\s+/g, "_");
+          const filename = `${sanitizedCaption}_${q.id.slice(-8)}.jpg`;
+
+          images.push({ name: filename, blob });
+        } catch (error) {
+          console.error(`Failed to generate JPEG for QR ${q.id}:`, error);
+          toast.error(`Failed to generate image for ${getCaption(q) || q.id}`);
+        }
+
+        // Small delay to prevent UI freezing
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+
+      if (images.length === 1) {
+        // Single image download
+        const { name, blob } = images[0];
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = name;
+        a.click();
+        URL.revokeObjectURL(url);
+        toast.success("JPEG image downloaded!");
+      } else {
+        // Multiple images - create ZIP
+        setProcessingMessage("Creating ZIP archive...");
+        const zip = new JSZip();
+
+        images.forEach(({ name, blob }) => {
+          zip.file(name, blob);
+        });
+
+        const zipBlob = await zip.generateAsync({ type: "blob" });
+        const url = URL.createObjectURL(zipBlob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "qr-codes-images.zip";
+        a.click();
+        URL.revokeObjectURL(url);
+        toast.success("ZIP file with JPEG images downloaded!");
+      }
+    } catch (error) {
+      console.error("Error generating JPEG images:", error);
+      toast.error("Failed to generate JPEG images. Please try again.");
+    } finally {
+      setProcessing(false);
+      setProcessingMessage("");
+    }
+  };
+
   // Bulk print button
-  const handlePrintSelected = async () => {
-    await printQRCodesToPdf(rowsForExportOrPrint);
+  const handlePrintSelected = async (format: "pdf" | "jpeg") => {
+    if (format === "pdf") {
+      await printQRCodesToPdf(rowsForExportOrPrint);
+    } else {
+      await generateJPEGImages(rowsForExportOrPrint);
+    }
   };
 
   // Per-row print button
-  const handlePrintSingle = async (q: QRCode) => {
-    await printQRCodesToPdf([q]);
+  const handlePrintSingle = async (q: QRCode, format: "pdf" | "jpeg") => {
+    if (format === "pdf") {
+      await printQRCodesToPdf([q]);
+    } else {
+      await generateJPEGImages([q]);
+    }
   };
 
   return (
@@ -917,22 +1117,28 @@ export default function QRManagementPage() {
                 </TooltipContent>
               </Tooltip>
 
-              {/* Print Bulk */}
-              <Tooltip>
-                <TooltipTrigger asChild>
+              {/* Print Bulk Dropdown */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
                   <Button
-                    onClick={handlePrintSelected}
                     style={{ backgroundColor: "var(--card-colour-3)" }}
                     className="text-white hover:text-white"
                     variant="outline"
                   >
-                    <Printer size={16} /> Print
+                    <Printer size={16} /> Print <ChevronDown size={16} />
                   </Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>Print the selected QR codes as PDF</p>
-                </TooltipContent>
-              </Tooltip>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent>
+                  <DropdownMenuItem onClick={() => handlePrintSelected("pdf")}>
+                    <FileText size={16} className="mr-2" />
+                    Export as PDF
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handlePrintSelected("jpeg")}>
+                    <ImageIcon size={16} className="mr-2" />
+                    Export as JPEG
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
 
               {/* Delete Selected */}
               <Tooltip>
@@ -1088,25 +1294,36 @@ export default function QRManagementPage() {
                           </TooltipContent>
                         </Tooltip>
 
-                        {/* Print Button */}
-                        <Tooltip>
-                          <TooltipTrigger asChild>
+                        {/* Print Button Dropdown */}
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
                             <Button
                               size="sm"
                               variant="secondary"
-                              onClick={() => handlePrintSingle(q)}
                               style={{
                                 backgroundColor: "var(--card-colour-3)",
                               }}
                               className="text-white"
                             >
                               <Printer size={16} />
+                              <ChevronDown size={12} />
                             </Button>
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            <p>Print QR code</p>
-                          </TooltipContent>
-                        </Tooltip>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent>
+                            <DropdownMenuItem
+                              onClick={() => handlePrintSingle(q, "pdf")}
+                            >
+                              <FileText size={16} className="mr-2" />
+                              PDF
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => handlePrintSingle(q, "jpeg")}
+                            >
+                              <ImageIcon size={16} className="mr-2" />
+                              JPEG
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </TableCell>
                     </TableRow>
                   );
