@@ -10,23 +10,11 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Medal, Trophy, TrendingUp } from "lucide-react";
-import { Label } from "@/components/ui/label";
+import { Medal, Trophy } from "lucide-react";
 import { toast } from "sonner";
 
 // Types
-type Group = {
-  id: string;
-  name: string;
-  type: "FUND" | "VOLUNTEER";
-};
+// (Removed unused Group type)
 
 type TopDonor = {
   id: string;
@@ -42,19 +30,9 @@ type TopGroup = {
   totalDonated: number;
 };
 
-type Grade = {
-  name: string; // e.g. "Grade 2"
-  classes: string[]; // e.g. ["2A", "2B", "2C"]
-};
+// (Removed unused Grade type)
 
-type GroupDonationStat = {
-  totalAmount: number;
-};
-
-type ClassDonationStat = {
-  totalAmount: number;
-  donorCount: number;
-};
+// (Removed unused GroupDonationStat and ClassDonationStat types)
 
 type FundBreakdown = {
   total: number;
@@ -79,15 +57,6 @@ export default function AnalyticsPage() {
   // State variables
   const [topDonors, setTopDonors] = useState<TopDonor[]>([]);
   const [topGroups, setTopGroups] = useState<TopGroup[]>([]);
-  const [groups, setGroups] = useState<Group[]>([]);
-  const [grades, setGrades] = useState<Grade[]>([]);
-  const [selectedGroup, setSelectedGroup] = useState<string>("");
-  const [selectedGrade, setSelectedGrade] = useState<string>("");
-  const [selectedClass, setSelectedClass] = useState<string>("");
-  const [groupDonationStat, setGroupDonationStat] =
-    useState<GroupDonationStat | null>(null);
-  const [classDonationStat, setClassDonationStat] =
-    useState<ClassDonationStat | null>(null);
   const [fundBreakdownData, setFundBreakdownData] =
     useState<FundBreakdownData | null>(null);
 
@@ -100,23 +69,8 @@ export default function AnalyticsPage() {
   useEffect(() => {
     fetchTopDonors();
     fetchTopGroups();
-    fetchGroups();
-    fetchGrades();
     fetchFundBreakdown();
   }, []);
-
-  // Fetch data when selections change
-  useEffect(() => {
-    if (selectedGroup) {
-      fetchGroupDonations(selectedGroup);
-    }
-  }, [selectedGroup]);
-
-  useEffect(() => {
-    if (selectedGrade && selectedClass) {
-      fetchClassDonations(selectedGrade, selectedClass);
-    }
-  }, [selectedGrade, selectedClass]);
 
   // Data fetching functions
   const fetchTopDonors = async () => {
@@ -139,51 +93,7 @@ export default function AnalyticsPage() {
     }
   };
 
-  const fetchGroups = async () => {
-    try {
-      const res = await axios.get<{ data: Group[] }>(
-        "/api/admin/groups/get-all-groups"
-      );
-      setGroups(res.data.data);
-    } catch (error) {
-      toast.error("Failed to fetch groups");
-      console.error("Error fetching groups:", error);
-    }
-  };
-
-  const fetchGrades = async () => {
-    try {
-      const res = await axios.get<Grade[]>("/api/analytics/grades");
-      setGrades(res.data);
-    } catch (error) {
-      toast.error("Failed to fetch grades");
-      console.error("Error fetching grades:", error);
-    }
-  };
-
-  const fetchGroupDonations = async (groupId: string) => {
-    try {
-      const res = await axios.get<GroupDonationStat>(
-        `/api/analytics/group-donations?groupId=${groupId}`
-      );
-      setGroupDonationStat(res.data);
-    } catch (error) {
-      toast.error("Failed to fetch group donations");
-      console.error("Error fetching group donations:", error);
-    }
-  };
-
-  const fetchClassDonations = async (gradeName: string, className: string) => {
-    try {
-      const res = await axios.get<ClassDonationStat>(
-        `/api/analytics/class-donations?gradeName=${gradeName}&className=${className}`
-      );
-      setClassDonationStat(res.data);
-    } catch (error) {
-      toast.error("Failed to fetch class donations");
-      console.error("Error fetching class donations:", error);
-    }
-  };
+  // (Removed unused groups/grades and related fetchers)
 
   const fetchFundBreakdown = async () => {
     try {
@@ -197,12 +107,7 @@ export default function AnalyticsPage() {
     }
   };
 
-  // Handle selection changes
-  const handleGradeChange = (value: string) => {
-    setSelectedGrade(value);
-    setSelectedClass(""); // Reset class when grade changes
-    setClassDonationStat(null); // Reset class donation stats
-  };
+  // (Removed unused selection handlers)
 
   // Helper component to render breakdown data
   const renderBreakdown = (

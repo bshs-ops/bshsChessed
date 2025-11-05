@@ -736,9 +736,9 @@ export default function ScannerPage() {
         } catch (e) {}
         resetNormalMode();
       } catch (error) {
-        const axiosError = error as any;
+        const axiosError = error as AxiosError<{ error: string }>;
         const msg =
-          axiosError?.response?.data?.error ||
+          axiosError.response?.data?.error ||
           "Failed to add volunteer participation.";
         toast.error(msg);
         try {
