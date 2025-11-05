@@ -26,7 +26,7 @@ import { useRouter } from "next/navigation";
 import { FileUp, FileDown } from "lucide-react"; // ✨ Import icons
 import { usePageHeader } from "@/components/page-header-context";
 
-type Group = { id: string; name: string };
+type Group = { id: string; name: string; type?: string };
 
 export default function GenerateQRPage() {
   const [qrType, setQrType] = useState<"IDENTITY" | "PRESET">("IDENTITY");
@@ -76,6 +76,10 @@ export default function GenerateQRPage() {
 
   // Manual QR generation
   const handleGenerate = async () => {
+    const selectedGroup = groups.find((g) => g.id === selectedGroupId);
+    const isLevShulamis =
+      (selectedGroup?.name || "").trim().toLowerCase() ===
+      "lev shulamis".toLowerCase();
     if (
       qrType === "IDENTITY" &&
       (!studentName || !studentClass || !studentGrade || !studentYear)
@@ -83,7 +87,10 @@ export default function GenerateQRPage() {
       toast.error("Please fill all fields for IDENTITY QR");
       return;
     }
-    if (qrType === "PRESET" && (!selectedGroupId || !presetAmount)) {
+    if (
+      qrType === "PRESET" &&
+      (!selectedGroupId || (!isLevShulamis && !presetAmount))
+    ) {
       toast.error("Please fill group and amount for PRESET QR");
       return;
     }
@@ -102,7 +109,8 @@ export default function GenerateQRPage() {
           : {
               type: "PRESET",
               groupId: selectedGroupId,
-              amount: parseFloat(presetAmount),
+              // For LEV SHULAMIS, amount input is hidden; send 0 to backend
+              amount: isLevShulamis ? 0 : parseFloat(presetAmount),
               label: presetLabel,
             };
 
@@ -374,16 +382,27 @@ export default function GenerateQRPage() {
                       </SelectContent>
                     </Select>
                   </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="amount">Amount</Label>
-                    <Input
-                      id="amount"
-                      type="number"
-                      value={presetAmount}
-                      onChange={(e) => setPresetAmount(e.target.value)}
-                      placeholder="e.g., 50"
-                    />
-                  </div>
+                  {/* Hide Amount when PRESET + LEV SHULAMIS */}
+                  {(() => {
+                    const selected = groups.find(
+                      (g) => g.id === selectedGroupId
+                    );
+                    const isLev =
+                      (selected?.name || "").trim().toLowerCase() ===
+                      "lev shulamis".toLowerCase();
+                    return !isLev ? (
+                      <div className="space-y-2">
+                        <Label htmlFor="amount">Amount</Label>
+                        <Input
+                          id="amount"
+                          type="number"
+                          value={presetAmount}
+                          onChange={(e) => setPresetAmount(e.target.value)}
+                          placeholder="e.g., 50"
+                        />
+                      </div>
+                    ) : null;
+                  })()}
                   <div className="space-y-2">
                     <Label htmlFor="label">Label (optional)</Label>
                     <Input

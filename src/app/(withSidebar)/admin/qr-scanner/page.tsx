@@ -220,6 +220,13 @@ export default function ScannerPage() {
   const physicalPresetAmounts = getPresetAmounts(physicalSelectedGroupName);
   const physicalHasPresetAmounts = physicalPresetAmounts.length > 0;
 
+  // Normal mode: derive selected group details
+  const normalSelectedGroup = groups.find((g) => g.id === selectedGroupId);
+  const normalIsVolunteerGroup =
+    normalSelectedGroup?.type === "VOLUNTEER" ||
+    (normalSelectedGroup?.name || "").trim().toLowerCase() ===
+      "lev shulamis".toLowerCase();
+
   // Auto-focus the appropriate input field when changing to physical scanner mode
   useEffect(() => {
     if (mode === "PHYSICAL") {
@@ -462,10 +469,11 @@ export default function ScannerPage() {
     setLoadingMessage("Processing QR code...");
 
     try {
-      // Validate the student ID in the background
+      // Validate the student ID by donorId in Physical mode
       const res = await axios.post("/api/admin/scanner/record-donation", {
         action: "VALIDATE",
-        token: token,
+        identifierType: "DONOR_ID",
+        donorId: token,
       });
 
       const donor = res.data.data;
@@ -490,7 +498,8 @@ export default function ScannerPage() {
         // Handle donation group - record donation
         await axios.post("/api/admin/scanner/record-donation", {
           action: "RECORD",
-          token: token,
+          identifierType: "DONOR_ID",
+          donorId: donor.id,
           amount: parseFloat(physicalPresetAmount),
           groupId: physicalPresetGroupId,
         });
@@ -542,7 +551,8 @@ export default function ScannerPage() {
         try {
           const res = await axios.post("/api/admin/scanner/record-donation", {
             action: "VALIDATE",
-            token: token,
+            identifierType: "DONOR_ID",
+            donorId: token,
           });
 
           setPhysicalScannedIdentity({
@@ -571,15 +581,24 @@ export default function ScannerPage() {
           // Reset on error
           setPhysicalScanStep("IDENTITY");
           setPhysicalScannedIdentity(null);
+
+          // Play an error sound if available
+          try {
+            new Audio("/assets/sounds/error.mp3").play().catch(() => {});
+          } catch (e) {
+            // Ignore audio errors
+          }
         }
       } else {
         // Second scan: Process preset QR code using our new API
         try {
-          // Call the new preset QR validation API
+          // Call the preset QR validation API
+          // In physical mode, the input is the QR's id, not its value
           const presetRes = await axios.post(
             "/api/admin/scanner/validate-preset-qr",
             {
-              token: token,
+              identifierType: "QR_ID",
+              qrId: token,
             }
           );
 
@@ -594,7 +613,8 @@ export default function ScannerPage() {
           // Record the donation
           await axios.post("/api/admin/scanner/record-donation", {
             action: "RECORD",
-            token: physicalScannedIdentity.token,
+            identifierType: "DONOR_ID",
+            donorId: physicalScannedIdentity.token,
             amount: parseFloat(presetAmount),
             groupId: presetGroupId,
           });
@@ -674,6 +694,12 @@ export default function ScannerPage() {
       const errorMessage =
         axiosError.response?.data?.error || "An unknown error occurred.";
       toast.error(errorMessage);
+      // Play an error sound if available
+      try {
+        new Audio("/assets/sounds/error.mp3").play().catch(() => {});
+      } catch (e) {
+        // Ignore audio errors
+      }
     } finally {
       // Close confirmation and clean up
       setPendingDonation(null);
@@ -690,8 +716,42 @@ export default function ScannerPage() {
   };
 
   const handleSubmitDonation = async () => {
-    if (!scannedToken || !donationAmount || !selectedGroupId) {
-      toast.error("Please fill all donation fields.");
+    if (!scannedToken || !selectedGroupId) {
+      toast.error("Please fill all required fields.");
+      return;
+    }
+
+    // If volunteer group selected in Normal Mode -> add participation instead of donation
+    if (normalIsVolunteerGroup) {
+      try {
+        setLoading(true);
+        await axios.post("/api/admin/volunteer/add-participation", {
+          donorId: scannedDonor?.id,
+          groupId: selectedGroupId,
+        });
+        toast.success(`${scannedDonor?.name || "Student"} added as volunteer!`);
+        // Optional success sound
+        try {
+          new Audio("/assets/sounds/success.mp3").play().catch(() => {});
+        } catch (e) {}
+        resetNormalMode();
+      } catch (error) {
+        const axiosError = error as any;
+        const msg =
+          axiosError?.response?.data?.error ||
+          "Failed to add volunteer participation.";
+        toast.error(msg);
+        try {
+          new Audio("/assets/sounds/error.mp3").play().catch(() => {});
+        } catch (e) {}
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
+    if (!donationAmount) {
+      toast.error("Please enter donation amount.");
       return;
     }
     setLoading(true);
@@ -709,6 +769,12 @@ export default function ScannerPage() {
       const errorMessage =
         axiosError.response?.data?.error || "Submission failed.";
       toast.error(errorMessage);
+      // Play an error sound if available
+      try {
+        new Audio("/assets/sounds/error.mp3").play().catch(() => {});
+      } catch (e) {
+        // Ignore audio errors
+      }
     } finally {
       setLoading(false);
     }
@@ -836,14 +902,18 @@ export default function ScannerPage() {
                       </AlertDescription>
                     </Alert>
                     <div className="space-y-2">
-                      <Label htmlFor="amount">Donation Amount</Label>
-                      <Input
-                        id="amount"
-                        type="number"
-                        placeholder="e.g., 5.00"
-                        value={donationAmount}
-                        onChange={(e) => setDonationAmount(e.target.value)}
-                      />
+                      {!normalIsVolunteerGroup && (
+                        <>
+                          <Label htmlFor="amount">Donation Amount</Label>
+                          <Input
+                            id="amount"
+                            type="number"
+                            placeholder="e.g., 5.00"
+                            value={donationAmount}
+                            onChange={(e) => setDonationAmount(e.target.value)}
+                          />
+                        </>
+                      )}
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="group">Group / Fund</Label>
@@ -876,7 +946,10 @@ export default function ScannerPage() {
                         className="w-full flex items-center justify-center gap-2"
                         disabled={loading}
                       >
-                        <Send size={16} /> Submit Donation
+                        <Send size={16} />
+                        {normalIsVolunteerGroup
+                          ? "Add Volunteer"
+                          : "Submit Donation"}
                       </Button>
                     </div>
                   </div>

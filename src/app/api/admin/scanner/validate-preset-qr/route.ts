@@ -3,23 +3,28 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/app/api/auth/[...nextauth]/options";
 import prisma from "@/lib/prisma";
 
+type IdentifierType = "QR_VALUE" | "QR_ID";
+
 export async function POST(request: Request) {
   const session = await getServerSession(authOptions);
   if (session?.user?.role !== "ADMIN") {
     return NextResponse.json({ error: "Admins only" }, { status: 403 });
   }
 
-  const body: { token: string } = await request.json();
-  const { token } = body;
-
-  if (!token) {
-    return NextResponse.json({ error: "Token is required" }, { status: 400 });
-  }
+  const body: {
+    token?: string; // QR value (default path)
+    qrId?: string; // QR id (used for physical scanner mode)
+    identifierType?: IdentifierType;
+  } = await request.json();
+  const identifierType: IdentifierType = body.identifierType ?? "QR_VALUE";
 
   try {
-    // Find the QR Code using the scanned token
+    // Find the QR Code using either value (default) or id (physical mode)
     const qrCode = await prisma.qRCode.findUnique({
-      where: { value: token },
+      where:
+        identifierType === "QR_ID"
+          ? { id: (body.qrId || "").trim() }
+          : { value: (body.token || "").trim() },
       include: {
         presetGroup: { select: { id: true, name: true } },
       },

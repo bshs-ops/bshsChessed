@@ -3,19 +3,18 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/app/api/auth/[...nextauth]/options";
 import prisma from "@/lib/prisma";
 
-type Body =
-  // Used in Normal Mode to get donor details after a scan
-  | {
-      action: "VALIDATE";
-      token: string;
-    }
-  // Used to submit a donation in both Normal and Preset modes
-  | {
-      action: "RECORD";
-      token: string;
-      amount: number;
-      groupId: string;
-    };
+type IdentifierType = "QR_VALUE" | "DONOR_ID";
+
+type Body = {
+  action: "VALIDATE" | "RECORD";
+  // When identifierType is QR_VALUE (default), clients send `token` (the QR value)
+  // When identifierType is DONOR_ID, clients send `donorId` directly (used by Physical Scanner mode)
+  identifierType?: IdentifierType;
+  token?: string;
+  donorId?: string;
+  amount?: number;
+  groupId?: string;
+};
 
 export async function POST(request: Request) {
   const session = await getServerSession(authOptions);
@@ -26,36 +25,64 @@ export async function POST(request: Request) {
   const body: Body = await request.json();
 
   try {
-    // 1. Find the QR Code using the scanned token
-    const qrCode = await prisma.qRCode.findUnique({
-      where: { value: body.token },
-    });
+    const identifierType: IdentifierType = body.identifierType ?? "QR_VALUE";
 
-    // 2. Validate the QR Code
-    if (
-      !qrCode ||
-      !qrCode.isActive ||
-      qrCode.type !== "IDENTITY" ||
-      !qrCode.donorId
-    ) {
-      return NextResponse.json(
-        { error: "Invalid or inactive Identity QR Code." },
-        { status: 404 }
-      );
-    }
-
-    // 3. Handle the requested action
     if (body.action === "VALIDATE") {
-      const donor = await prisma.donor.findUnique({
-        where: { id: qrCode.donorId },
-      });
-      if (!donor) {
-        return NextResponse.json(
-          { error: "Donor not found." },
-          { status: 404 }
-        );
+      if (identifierType === "DONOR_ID") {
+        const donorId = (body.donorId || "").trim();
+        if (!donorId) {
+          return NextResponse.json(
+            { error: "Student ID is required." },
+            { status: 400 }
+          );
+        }
+        const donor = await prisma.donor.findUnique({ where: { id: donorId } });
+        if (!donor) {
+          return NextResponse.json(
+            {
+              error:
+                "Invalid student ID. It looks like a Preset QR was scanned. Please scan a Student ID in step 1.",
+            },
+            { status: 400 }
+          );
+        }
+        return NextResponse.json({ data: donor });
+      } else {
+        const token = (body.token || "").trim();
+        if (!token) {
+          return NextResponse.json(
+            { error: "QR token is required." },
+            { status: 400 }
+          );
+        }
+        const qrCode = await prisma.qRCode.findUnique({
+          where: { value: token },
+        });
+        if (
+          !qrCode ||
+          !qrCode.isActive ||
+          qrCode.type !== "IDENTITY" ||
+          !qrCode.donorId
+        ) {
+          return NextResponse.json(
+            {
+              error:
+                "Invalid or inactive Student ID QR. Make sure you're scanning the Student ID code.",
+            },
+            { status: 404 }
+          );
+        }
+        const donor = await prisma.donor.findUnique({
+          where: { id: qrCode.donorId },
+        });
+        if (!donor) {
+          return NextResponse.json(
+            { error: "Donor not found." },
+            { status: 404 }
+          );
+        }
+        return NextResponse.json({ data: donor });
       }
-      return NextResponse.json({ data: donor });
     } else if (body.action === "RECORD") {
       const { amount, groupId } = body;
       if (typeof amount !== "number" || amount <= 0 || !groupId) {
@@ -65,10 +92,57 @@ export async function POST(request: Request) {
         );
       }
 
-      // Record the donation in the database
+      let donorIdToUse: string | null = null;
+      if (identifierType === "DONOR_ID") {
+        const donorId = (body.donorId || "").trim();
+        if (!donorId) {
+          return NextResponse.json(
+            { error: "Student ID is required to record a donation." },
+            { status: 400 }
+          );
+        }
+        const donor = await prisma.donor.findUnique({ where: { id: donorId } });
+        if (!donor) {
+          return NextResponse.json(
+            {
+              error:
+                "Invalid student ID. It looks like a Preset QR was scanned. Please scan a valid Student ID first.",
+            },
+            { status: 400 }
+          );
+        }
+        donorIdToUse = donor.id;
+      } else {
+        const token = (body.token || "").trim();
+        if (!token) {
+          return NextResponse.json(
+            { error: "QR token is required to record a donation." },
+            { status: 400 }
+          );
+        }
+        const qrCode = await prisma.qRCode.findUnique({
+          where: { value: token },
+        });
+        if (
+          !qrCode ||
+          !qrCode.isActive ||
+          qrCode.type !== "IDENTITY" ||
+          !qrCode.donorId
+        ) {
+          return NextResponse.json(
+            {
+              error:
+                "Invalid or inactive Student ID QR. Make sure you're scanning the Student ID code.",
+            },
+            { status: 404 }
+          );
+        }
+        donorIdToUse = qrCode.donorId;
+      }
+
       const donation = await prisma.donation.create({
         data: {
-          donorId: qrCode.donorId,
+          donorId: donorIdToUse!,
           groupId: groupId,
           amount: amount,
           source: "SCAN",
